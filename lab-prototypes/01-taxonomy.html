@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="01-taxonomy">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- AI taxonomy: (1) nested families, (2) openness × where-it-runs grid ----
+const bar = h("div", { class: "bar" }, stage);
+const view = seg(bar, [["fam", "Families of AI"], ["open", "Openness & where it runs"]], "fam", show);
+const holder = h("div", {}, stage), ro = readout(side), extra = h("div", { class: "side" }, side);
+
+const FAM = {
+  ai: { t: "Artificial intelligence", c: C.grey, d: "Any system that performs tasks we associate with human intelligence. The widest circle: it includes hand-written rules as well as systems that learn.", ex: ["Rule engines, expert systems", "Search and planning", "Everything below"], ask: "Is the decision logic written by people, or learned from data?" },
+  rules: { t: "Rule-based (symbolic) AI", c: C.grey, d: "Logic that experts write down explicitly. Fully explainable and predictable, but it only knows what someone wrote.", ex: ["Tax and eligibility rules", "Validation checks", "Deterministic gates in a workflow"], ask: "Still the right tool whenever the rule is known and must be exact." },
+  ml: { t: "Machine learning", c: C.purple, d: "Systems that learn a pattern from examples instead of being programmed with it. Everything inside this box is statistics at scale.", ex: ["Classification, regression, clustering", "Deep learning (many-layered neural networks)"], ask: "Do we have enough representative examples of the thing we want?" },
+  quant: { t: "Quant AI (predictive & analytical)", c: C.blue, d: "Models that output a number, a score or a decision on structured data. Narrow, measurable, and usually easy to validate against history.", ex: ["Credit and fraud scoring", "Demand and price forecasting", "Optimisation and risk models"], ask: "Measured by accuracy on held-out data. Governed by model validation." },
+  gen: { t: "Generative AI", c: C.magenta, d: "Models that create new content: text, code, images, audio. Built on foundation models trained on very large, general datasets, then steered with prompts.", ex: ["Drafting, summarising, translating", "Code generation", "Image and speech generation"], ask: "Output is plausible, not guaranteed true. It must be checked or grounded." },
+  agent: { t: "Agentic AI", c: C.yellow, d: "A generative model placed in a loop with tools and a goal. It plans, acts, looks at the result and tries again, until a stop condition is met.", ex: ["Coding agents", "Research and reconciliation agents", "Multi-step process automation"], ask: "It takes actions. Permissions, gates and audit trail matter more than the model." },
+};
+function families() {
+  holder.innerHTML = "";
+  const sv = svg(holder, 1000, 610), box = {};
+  const set = (id, x, y, w, hh, o = {}) => {
+    const f = FAM[id], g = s("g", { style: "cursor:pointer" }, sv);
+    const r = s("rect", { x, y, width: w, height: hh, rx: o.rx || 34, fill: hexA(f.c, o.fill ?? 0.1), stroke: f.c, "stroke-width": 2, "stroke-dasharray": o.dash }, g);
+    text(g, x + 24, y + 34, o.label || f.t, { size: o.size || 19, weight: 700, anchor: "start", fill: id === "ai" ? "#fff" : f.c });
+    if (o.sub) text(g, x + 24, y + 58, o.sub, { size: 13, weight: 400, anchor: "start", fill: "rgba(255,255,255,.7)", max: o.max || 40 });
+    g.addEventListener("click", (e) => { e.stopPropagation(); pick(id); }); box[id] = r; return g;
+  };
+  set("ai", 20, 20, 960, 570, { fill: 0.05 });
+  set("rules", 50, 80, 230, 480, { label: "Rule-based AI", sub: "Logic written by people. Exact, explainable.", max: 24, dash: "6 6", rx: 24 });
+  set("ml", 310, 80, 640, 480, { sub: "Learned from examples" });
+  set("quant", 340, 160, 262, 370, { label: "Quant AI", sub: "Predictive & analytical: a number or a class from structured data", max: 26, rx: 24 });
+  set("gen", 590, 160, 330, 370, { sub: "Creates content from a foundation model", max: 30, rx: 24 });
+  set("agent", 690, 300, 250, 250, { sub: "GenAI + tools + a loop + a goal", max: 24, rx: 24, fill: 0.14 });
+  text(sv, 600, 548, "overlap: GenAI that writes or explains the quant model", { size: 11.5, fill: "rgba(255,255,255,.55)", weight: 400 });
+  const pick = (id) => {
+    const f = FAM[id];
+    for (const k in box) { box[k].setAttribute("stroke-width", k === id ? 5 : 2); box[k].style.filter = k === id ? `drop-shadow(0 0 16px ${FAM[k].c})` : "none"; }
+    ro.set("Family", f.t, `${f.d}<ul>${f.ex.map((e) => `<li>${e}</li>`).join("")}</ul><p style="margin-top:10px"><b>The question to ask:</b> ${f.ask}</p>`);
+  };
+  extra.innerHTML = ""; const c = card(extra, "How to read this");
+  c.body.innerHTML = "<p>Boxes are <b>nested</b>: every agentic system is generative AI, every generative model is machine learning. <b>Quant AI</b> and <b>GenAI</b> are siblings that solve different problems and are governed differently.</p><p>Most enterprise value today still comes from combining them: a quant model decides, a generative model explains and an agent carries out the steps.</p>";
+  pick("agent");
+}
+
+// openness (licence) × where it runs. "Local" is a deployment choice, not a licence.
+const OPEN = [["closed", "Closed", "Weights are secret. You rent access."], ["weights", "Open-weights", "Weights downloadable. Licence may restrict use."], ["source", "Open-source", "Weights and code under a permissive licence."]];
+const RUN = [["api", "Vendor API", "The model owner runs it"], ["cloud", "Your cloud tenant", "Hosted for you, inside your boundary"], ["local", "Local / on-prem", "Your own hardware, can be air-gapped"]];
+const CELL = {
+  "closed|api": { ok: 1, ex: "GPT, Claude, Gemini via their own APIs", s: [1, 5, 5, 2], n: "Fastest route to the strongest models. Data leaves your boundary; you depend on one vendor's roadmap and prices." },
+  "closed|cloud": { ok: 1, ex: "The same models through Azure, AWS Bedrock, Google Vertex", s: [2, 5, 4, 3], n: "Same capability inside your cloud contract and region. The usual enterprise default." },
+  "closed|local": { ok: 0, ex: "Not available", s: [0, 0, 0, 0], n: "Closed models cannot be downloaded, so they cannot run on your own hardware. If you need local, you need open weights." },
+  "weights|api": { ok: 1, ex: "Llama, Gemma or Mistral models served by an inference provider", s: [2, 3, 4, 3], n: "Cheap and fast to try. You can later move the same model in-house without changing the application." },
+  "weights|cloud": { ok: 1, ex: "Open-weight models deployed on your own GPU instances", s: [4, 3, 3, 4], n: "You control the version and the data path. You also own capacity planning and upgrades." },
+  "weights|local": { ok: 1, ex: "Gemma or Mistral on a laptop or server through Ollama", s: [5, 2, 2, 5], n: "Maximum sovereignty: nothing leaves the machine. Smaller models, more engineering, hardware cost up front." },
+  "source|api": { ok: 1, ex: "Apache- or MIT-licensed models from a hosted provider", s: [3, 3, 4, 3], n: "As open-weights, plus the freedom to modify and redistribute if you ever need to." },
+  "source|cloud": { ok: 1, ex: "Permissively licensed models, fine-tuned on your data", s: [5, 3, 3, 4], n: "Full legal freedom to adapt and embed in products. The licence is no longer a constraint; skills are." },
+  "source|local": { ok: 1, ex: "Permissive models on sovereign or air-gapped infrastructure", s: [5, 2, 2, 5], n: "The sovereign option. Used where regulation or secrecy rules out any external dependency." },
+};
+function openness() {
+  holder.innerHTML = "";
+  const sv = svg(holder, 1000, 610), cells = {}, x0 = 210, y0 = 110, cw = 250, ch = 150;
+  text(sv, x0 + cw * 1.5, 34, "HOW OPEN IS THE MODEL →", { size: 12, weight: 700, fill: C.yellow, "letter-spacing": 2 });
+  text(sv, 30, y0 + ch * 1.5, "WHERE IT RUNS →", { size: 12, weight: 700, fill: C.yellow, "letter-spacing": 2, transform: `rotate(-90 30 ${y0 + ch * 1.5})` });
+  OPEN.forEach(([id, t, d], i) => { text(sv, x0 + cw * i + cw / 2, 66, t, { size: 19, weight: 700 }); text(sv, x0 + cw * i + cw / 2, 88, d, { size: 11.5, weight: 400, fill: "rgba(255,255,255,.62)" }); });
+  RUN.forEach(([id, t, d], j) => { text(sv, x0 - 16, y0 + ch * j + ch / 2 - 4, t, { size: 16, weight: 700, anchor: "end" }); text(sv, x0 - 16, y0 + ch * j + ch / 2 + 16, d, { size: 11, weight: 400, anchor: "end", fill: "rgba(255,255,255,.62)", max: 24 }); });
+  OPEN.forEach(([o], i) => RUN.forEach(([r], j) => {
+    const k = `${o}|${r}`, c = CELL[k], g = s("g", { style: "cursor:pointer" }, sv), x = x0 + cw * i + 6, y = y0 + ch * j + 6;
+    const hue = [C.magenta, C.blue, C.green][i];
+    const rc = s("rect", { x, y, width: cw - 12, height: ch - 12, rx: 20, fill: c.ok ? hexA(hue, 0.08 + j * 0.05) : "rgba(255,255,255,.03)", stroke: c.ok ? hue : "rgba(255,255,255,.2)", "stroke-width": 2, "stroke-dasharray": c.ok ? null : "5 6" }, g);
+    text(g, x + (cw - 12) / 2, y + 44, c.ok ? c.ex : "Not possible", { size: c.ok ? 13.5 : 15, weight: c.ok ? 500 : 700, fill: c.ok ? "#fff" : "rgba(255,255,255,.4)", max: 28 });
+    if (c.ok) { const ctl = c.s[0]; for (let q = 0; q < 5; q++) s("circle", { cx: x + 70 + q * 22, cy: y + ch - 38, r: 6, fill: q < ctl ? C.yellow : "rgba(255,255,255,.16)" }, g); text(g, x + 20, y + ch - 34, "control", { size: 10.5, anchor: "start", fill: "rgba(255,255,255,.5)", weight: 400 }); }
+    g.addEventListener("click", () => pick(k)); cells[k] = rc;
+  }));
+  const pick = (k) => {
+    const c = CELL[k], [o, r] = k.split("|"), O = OPEN.find((x) => x[0] === o), R = RUN.find((x) => x[0] === r);
+    for (const q in cells) { cells[q].setAttribute("stroke-width", q === k ? 5 : 2); cells[q].style.filter = q === k ? "drop-shadow(0 0 14px rgba(255,230,0,.7))" : "none"; }
+    const bars = c.ok ? ["Control & sovereignty", "Raw capability", "Speed to start", "Engineering effort"].map((l, i) => `<div class="field" style="margin-top:8px"><div class="row"><span>${l}</span><b>${c.s[i]}/5</b></div><div style="height:6px;border-radius:3px;background:rgba(255,255,255,.14)"><div style="height:6px;border-radius:3px;width:${c.s[i] * 20}%;background:${i === 3 ? C.orange : C.yellow}"></div></div></div>`).join("") : "";
+    ro.set(`${O[1]} · ${R[1]}`, c.ok ? c.ex : "This combination does not exist", `${c.n}${bars}`);
+  };
+  extra.innerHTML = ""; const c = card(extra, "Three terms people mix up");
+  c.body.innerHTML = "<ul><li><b>Open-weights</b>: you can download and run the trained model, but the licence may limit commercial use or scale.</li><li><b>Open-source</b>: a permissive licence (such as Apache 2.0 or MIT) on weights and code. Training data is rarely included.</li><li><b>Local</b>: says where the model runs, not how it is licensed. Only open models can run locally.</li></ul><p style='margin-top:10px' class='hint'>Example models are illustrative. Licences differ per model version, so check before you rely on one.</p>";
+  pick("closed|cloud");
+}
+function show(v) { v === "fam" ? families() : openness(); }
+show("fam");
+
+</script>
+</body>
+</html>

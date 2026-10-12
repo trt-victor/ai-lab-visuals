@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="27-build-buy-integrate">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Build / buy / integrate: five questions → a position in a triangle, with the reasoning shown ----
+const Q = [
+  ["diff", "How much does this process set you apart?", "Commodity", "Core advantage", { buy: -1, integ: 0.2, build: 1 }],
+  ["sens", "How sensitive or sovereign is the data?", "Public", "Must stay in-house", { buy: -0.8, integ: 0.1, build: 0.8 }],
+  ["speed", "How quickly is a result needed?", "Can wait a year", "This quarter", { buy: 1, integ: 0.4, build: -1 }],
+  ["cap", "How strong is your engineering capability?", "None in-house", "Strong platform team", { buy: -0.6, integ: 0.3, build: 0.9 }],
+  ["fit", "How well do products on the market fit?", "Nothing fits", "Fits out of the box", { buy: 1, integ: 0.3, build: -0.9 }],
+];
+const CASES = { "Email and document drafting": [1, 2, 5, 2, 5], "Customer service agent": [3, 3, 4, 3, 3], "Governed software delivery platform": [5, 4, 2, 4, 1], "Underwriting decision support": [5, 5, 2, 3, 2], "Custom": null };
+const OPT = { buy: ["Buy", C.blue, "Take the AI that comes with a product. Configure, do not build."], integ: ["Integrate", C.cyan, "Rent the engine; own the connection to your data, systems and rules."], build: ["Build", C.yellow, "Own the system. Justified when the process is the advantage or the rules are strict."] };
+let v = CASES["Customer service agent"].slice();
+const sv = svg(stage, 1000, 600), g = s("g", {}, sv), TR = { build: [500, 70], buy: [140, 530], integ: [860, 530] };
+const ctl = card(side, "Five questions");
+const caseSel = h("select", { class: "btn", style: "width:100%;margin-bottom:12px", on: { change: () => { const c = CASES[caseSel.value]; if (c) { v = c.slice(); sl.forEach((x, i) => x.set(v[i])); draw(); } } } }, ctl.body); Object.keys(CASES).forEach((k) => h("option", { value: k, text: k }, caseSel)); caseSel.value = "Customer service agent";
+const sl = Q.map(([id, q, lo, hi], i) => { const f = slider(ctl.body, { label: q, min: 1, max: 5, value: v[i], fmt: (x) => `${x}/5` }, (x) => { v[i] = x; caseSel.value = "Custom"; draw(); }); h("div", { class: "row hint", style: "display:flex;justify-content:space-between;margin:-4px 0 10px", html: `<span>${lo}</span><span>${hi}</span>` }, ctl.body); return f; });
+const ro = readout(side), why = card(side, "Why");
+// integrate wins when the answers are mixed or in the middle; buy and build win on clear, consistent answers
+function score() { const sc = { buy: 0, integ: 0.35, build: 0 }, contrib = { buy: [], integ: [], build: [] }; Q.forEach(([id, q, , , w], i) => { const x = (v[i] - 3) / 2; for (const k in sc) { const c = k === "integ" ? 0.11 - 0.45 * Math.abs(x) + w[k] * x * 0.3 : w[k] * x; sc[k] += c; contrib[k].push([c, q]); } }); const ex = Object.fromEntries(Object.entries(sc).map(([k, x]) => [k, Math.exp(x * 0.75)])), sum = ex.buy + ex.integ + ex.build; return { p: Object.fromEntries(Object.entries(ex).map(([k, x]) => [k, x / sum])), contrib }; }
+function draw() {
+  g.innerHTML = ""; const { p, contrib } = score();
+  s("polygon", { points: Object.values(TR).map((q) => q.join(",")).join(" "), fill: "rgba(255,255,255,.03)", stroke: "rgba(255,255,255,.3)", "stroke-width": 2 }, g);
+  const ctr = [(TR.build[0] + TR.buy[0] + TR.integ[0]) / 3, (TR.build[1] + TR.buy[1] + TR.integ[1]) / 3];
+  for (const k in TR) { const [x, y] = TR[k], [n, c] = OPT[k]; s("line", { x1: ctr[0], y1: ctr[1], x2: (TR[k === "build" ? "buy" : "build"][0] + TR[k === "integ" ? "buy" : "integ"][0]) / 2, y2: (TR[k === "build" ? "buy" : "build"][1] + TR[k === "integ" ? "buy" : "integ"][1]) / 2, stroke: "rgba(255,255,255,.12)", "stroke-dasharray": "4 6" }, g);
+    const others = Object.keys(TR).filter((q) => q !== k), mid = (q) => [(TR[k][0] + TR[q][0]) / 2, (TR[k][1] + TR[q][1]) / 2];
+    s("polygon", { points: [TR[k], mid(others[0]), ctr, mid(others[1])].map((q) => q.join(",")).join(" "), fill: hexA(c, 0.04 + p[k] * 0.3), stroke: "none" }, g);
+    text(g, x, y + (k === "build" ? -22 : 44), n, { size: 28, weight: 700, fill: c }); text(g, x, y + (k === "build" ? -2 : 66), `${Math.round(p[k] * 100)}%`, { size: 16, weight: 700, fill: "#fff" }); }
+  const x = p.build * TR.build[0] + p.buy * TR.buy[0] + p.integ * TR.integ[0], y = p.build * TR.build[1] + p.buy * TR.buy[1] + p.integ * TR.integ[1];
+  // the other reference cases, as faint dots
+  let ri = 0; for (const [n, c] of Object.entries(CASES)) { if (!c) continue; ri++; const keep = v; v = c; const q = score().p; v = keep; const cx = q.build * TR.build[0] + q.buy * TR.buy[0] + q.integ * TR.integ[0], cy = q.build * TR.build[1] + q.buy * TR.buy[1] + q.integ * TR.integ[1]; s("circle", { cx, cy, r: 6, fill: "rgba(255,255,255,.35)" }, g); text(g, cx, cy + (ri % 2 ? 20 : -12), n, { size: 10.5, fill: "rgba(255,255,255,.5)", weight: 400, max: 22 }); }
+  s("circle", { cx: x, cy: y, r: 16, fill: C.yellow, filter: "url(#glow)" }, g); s("circle", { cx: x, cy: y, r: 16, fill: "none", stroke: "#fff", "stroke-width": 3 }, g);
+  const rank = Object.entries(p).sort((a, b) => b[1] - a[1]), [top, tp] = rank[0], [second, sp] = rank[1], close = tp - sp < 0.12;
+  ro.set(close ? "A close call" : "Where this lands", close ? `${OPT[top][0]}, leaning to ${OPT[second][0].toLowerCase()}` : OPT[top][0], `${OPT[top][2]}${close ? `<p style="margin-top:8px">The two options are within a few points. In practice this usually means a hybrid: ${top === "build" || second === "build" ? "integrate what exists and build the part that is yours." : "buy the standard part and integrate it with your own data."}</p>` : ""}`);
+  const drivers = contrib[top].slice().sort((a, b) => b[0] - a[0]), against = drivers.filter((d) => d[0] < -0.05).reverse();
+  why.body.innerHTML = `<p><b>Pulling towards ${OPT[top][0].toLowerCase()}:</b></p><ul>${drivers.filter((d) => d[0] > 0.05).slice(0, 3).map((d) => `<li>${d[1]}</li>`).join("") || "<li>No strong driver: the answers are near the middle.</li>"}</ul>${against.length ? `<p style="margin-top:8px"><b>Pulling against:</b></p><ul>${against.slice(0, 2).map((d) => `<li>${d[1]}</li>`).join("")}</ul>` : ""}<p class="hint" style="margin-top:10px">Weights are a starting point for discussion and are listed in the page source.</p>`;
+}
+h("p", { class: "hint", style: "margin:6px 4px 0", text: "Grey dots are the reference cases. The decision is per use case: one organisation will sit in all three corners at once." }, stage);
+draw();
+
+</script>
+</body>
+</html>

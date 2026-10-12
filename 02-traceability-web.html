@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Traceability web — every artefact resolves to intent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:opsz,wght@6..12,300;6..12,400;6..12,600;6..12,700;6..12,800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#1a1a24; --surface:#23232f; --raised:#2e2e38;
+    --accent:#ffe600; --text:#ffffff; --muted:#c4c4cd; --dim:#747480;
+    --line:rgba(255,255,255,0.10); --line-2:rgba(255,255,255,0.20);
+    --radius:10px; --radius-lg:14px;
+    --font:'Nunito Sans','Segoe UI',system-ui,-apple-system,sans-serif;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);
+       padding:40px 24px 64px;min-height:100vh;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:780px;margin:0 auto}
+  .eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+  h1{font-size:27px;font-weight:800;letter-spacing:-.01em;line-height:1.1;margin-bottom:10px}
+  h1 .y{color:var(--accent)}
+  .sub{font-size:14px;color:var(--muted);line-height:1.6;max-width:62ch;margin-bottom:18px}
+  .hint{font-size:12px;color:var(--dim);margin-bottom:14px}
+  .hint b{color:var(--accent);font-weight:700}
+  .trace-svg{width:100%;display:block;cursor:default}
+  svg text{font-family:var(--font);user-select:none}
+  .node-hit{cursor:pointer}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 4px;align-items:center}
+  button{font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;border-radius:var(--radius);
+         padding:9px 16px;border:1px solid var(--line-2);background:var(--raised);color:var(--text);
+         transition:border-color .15s,background .15s}
+  button:hover{border-color:var(--accent)}
+  button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .toggle{display:inline-flex;align-items:center;gap:9px;font-size:12.5px;color:var(--muted);cursor:pointer;user-select:none;margin-left:4px}
+  .sw{width:34px;height:19px;border-radius:10px;border:1px solid var(--line-2);background:var(--raised);position:relative;transition:background .2s,border-color .2s}
+  .sw::after{content:'';position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:transform .2s}
+  .toggle.on .sw{background:var(--accent);border-color:var(--accent)}
+  .toggle.on .sw::after{transform:translateX(15px)}
+  .readout{margin-top:18px;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);
+           border-radius:var(--radius-lg);padding:16px 18px}
+  .ro-kicker{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:4px}
+  .ro-title{font-size:15px;font-weight:700;margin-bottom:6px}
+  .ro-body{font-size:13px;color:var(--muted);line-height:1.55;margin-bottom:9px}
+  .chain{font-size:12.5px;font-weight:700;color:var(--accent);line-height:1.7}
+  .chain .arr{color:var(--dim);font-weight:400;margin:0 5px}
+  .foot{margin-top:20px;font-size:11px;color:var(--dim);line-height:1.6;max-width:62ch}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">Governed delivery · 02</p>
+  <h1>Pick any artefact. It <span class="y">resolves to intent</span></h1>
+  <p class="sub">Traceability here is artifact-level: petition, outcome contract, scenarios, specs, architecture, tests, reviews, docs and status all link back to the same petition. Not a record of every conversation — a chain of artefacts you can actually follow.</p>
+  <p class="hint">Tap a node to light its path back to <b>Petition 050</b>.</p>
+
+  <svg class="trace-svg" viewBox="0 0 720 420" role="img" aria-label="Traceability tree of delivery artefacts rooted at the petition">
+    <g id="edges"></g>
+    <g id="nodes"></g>
+    <g id="disclaimer" style="display:none">
+      <rect x="500" y="356" width="200" height="44" rx="8" fill="#23232f" stroke="#3a3a46" stroke-width="1" stroke-dasharray="4 3"/>
+      <line x1="508" y1="364" x2="692" y2="392" stroke="#5a5a66" stroke-width="1.2"/>
+      <text x="600" y="372" text-anchor="middle" font-size="10.5" fill="#747480">Every conversation</text>
+      <text x="600" y="388" text-anchor="middle" font-size="10.5" fill="#747480">/ every decision</text>
+    </g>
+  </svg>
+
+  <div class="controls">
+    <button id="btn-clear">Clear path</button>
+    <div class="toggle" id="tg" role="switch" aria-checked="false" tabindex="0">
+      <span class="sw"></span><span>Show what we don't claim</span>
+    </div>
+  </div>
+
+  <div class="readout">
+    <div class="ro-kicker" id="ro-kicker">Anchor</div>
+    <div class="ro-title" id="ro-title">Petition 050 — Unified Case Timeline</div>
+    <div class="ro-body" id="ro-body">The petition anchors the business intent. Tap any downstream artefact to see how it resolves back here.</div>
+    <div class="chain" id="ro-chain"></div>
+  </div>
+
+  <p class="foot">This is the honest version of traceability: the artefacts and their links are captured and kept current — not a claim that every prompt, message, or micro-decision is logged.</p>
+</div>
+
+<script>
+const N={
+  petition:{x:360,y:56,label:'Petition 050',sub:'Business intent',parent:null,hue:'#ffe600',
+            role:'Anchors the business intent. Every other artefact resolves back to here.'},
+  outcome:{x:200,y:152,label:'Outcome contract',sub:'Observable behaviour',parent:'petition',hue:'#5aa9e6',
+           role:'States the observable behaviour and outcome the change must satisfy.'},
+  arch:{x:445,y:152,label:'Architecture',sub:'Governed design',parent:'petition',hue:'#a99cf2',
+        role:'Explains how the change is delivered within the platform model and policies.'},
+  status:{x:625,y:152,label:'Program status',sub:'Portfolio truth',parent:'petition',hue:'#c4c4cd',
+          role:'Rolls this petition up into the portfolio source of truth.'},
+  scenarios:{x:120,y:252,label:'Scenarios',sub:'Gherkin criteria',parent:'outcome',hue:'#5aa9e6',
+             role:'Turns the outcome into checkable acceptance scenarios.'},
+  specs:{x:445,y:252,label:'Specs',sub:'Executable spec',parent:'arch',hue:'#43d6a0',
+         role:'Executable expectations derived from the governed design.'},
+  docs:{x:205,y:352,label:'Docs',sub:'Current picture',parent:'scenarios',hue:'#c4c4cd',
+        role:'Regenerated from upstream artefacts — kept current, not hand-maintained.'},
+  tests:{x:375,y:352,label:'Tests',sub:'Evidence',parent:'specs',hue:'#43d6a0',
+         role:'Deterministic evidence that the spec holds.'},
+  review:{x:512,y:352,label:'Review',sub:'Evidence',parent:'specs',hue:'#e8a13a',
+          role:'Human-checked evidence of quality and accountability.'},
+};
+const order=['petition','outcome','arch','status','scenarios','specs','docs','tests','review'];
+const NS='http://www.w3.org/2000/svg';
+const W=128,H=46;
+
+// edges
+const edgesG=document.getElementById('edges');
+order.forEach(k=>{
+  const n=N[k]; if(!n.parent) return;
+  const p=N[n.parent];
+  const l=document.createElementNS(NS,'line');
+  l.setAttribute('id','edge-'+k);
+  l.setAttribute('x1',n.x); l.setAttribute('y1',n.y-H/2);
+  l.setAttribute('x2',p.x); l.setAttribute('y2',p.y+H/2);
+  l.setAttribute('stroke','#33333f'); l.setAttribute('stroke-width','1.6'); l.setAttribute('stroke-linecap','round');
+  edgesG.appendChild(l);
+});
+
+// nodes
+const nodesG=document.getElementById('nodes');
+order.forEach(k=>{
+  const n=N[k];
+  const g=document.createElementNS(NS,'g'); g.setAttribute('class','node-hit'); g.setAttribute('id','node-'+k);
+  g.setAttribute('tabindex','0'); g.setAttribute('role','button'); g.setAttribute('aria-label',n.label);
+  const r=document.createElementNS(NS,'rect');
+  r.setAttribute('x',n.x-W/2); r.setAttribute('y',n.y-H/2); r.setAttribute('width',W); r.setAttribute('height',H);
+  r.setAttribute('rx',9); r.setAttribute('fill','#23232f'); r.setAttribute('stroke','#33333f'); r.setAttribute('stroke-width','1');
+  g.appendChild(r);
+  const bar=document.createElementNS(NS,'rect');
+  bar.setAttribute('x',n.x-W/2); bar.setAttribute('y',n.y-H/2); bar.setAttribute('width',4); bar.setAttribute('height',H);
+  bar.setAttribute('rx',2); bar.setAttribute('fill',n.hue); bar.setAttribute('opacity','0.55'); g.appendChild(bar);
+  const t1=document.createElementNS(NS,'text');
+  t1.setAttribute('x',n.x); t1.setAttribute('y',n.y-6); t1.setAttribute('text-anchor','middle');
+  t1.setAttribute('font-size','12.5'); t1.setAttribute('font-weight','700'); t1.setAttribute('fill','#ececf2');
+  t1.textContent=n.label; g.appendChild(t1);
+  const t2=document.createElementNS(NS,'text');
+  t2.setAttribute('x',n.x); t2.setAttribute('y',n.y+11); t2.setAttribute('text-anchor','middle');
+  t2.setAttribute('font-size','10'); t2.setAttribute('fill','#8a8a96');
+  t2.textContent=n.sub; g.appendChild(t2);
+  g.addEventListener('click',()=>select(k));
+  g.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){e.preventDefault();select(k);} });
+  nodesG.appendChild(g);
+});
+
+function pathToRoot(k){const p=[];let c=k;while(c){p.push(c);c=N[c].parent;}return p;}
+
+function paint(active){
+  const set=new Set(active);
+  order.forEach(k=>{
+    const n=N[k], on=set.has(k);
+    const r=document.querySelector('#node-'+k+' rect');
+    r.setAttribute('stroke', on?n.hue:'#33333f');
+    r.setAttribute('stroke-width', on?'2.5':'1');
+    r.setAttribute('fill', on?'#2a2a36':'#23232f');
+    document.querySelector('#node-'+k).style.opacity = (active.length && !on)?'0.4':'1';
+    const bar=document.querySelector('#node-'+k+' rect:nth-of-type(2)');
+    if(bar) bar.setAttribute('opacity', on?'1':'0.55');
+    const edge=document.getElementById('edge-'+k);
+    if(edge){
+      const eon=on && set.has(N[k].parent);
+      edge.setAttribute('stroke', eon?'#ffe600':'#33333f');
+      edge.setAttribute('stroke-width', eon?'2.6':'1.6');
+      edge.setAttribute('opacity', (active.length && !eon)?'0.4':'1');
+    }
+  });
+}
+
+function select(k){
+  const path=pathToRoot(k);
+  paint(path);
+  const n=N[k];
+  document.getElementById('ro-kicker').textContent = k==='petition'?'Anchor':'Artefact → intent';
+  document.getElementById('ro-title').textContent = k==='petition'?'Petition 050 — Unified Case Timeline':n.label;
+  document.getElementById('ro-body').textContent = n.role;
+  const chainEl=document.getElementById('ro-chain');
+  if(path.length>1){
+    chainEl.innerHTML = path.map(p=>N[p].label).join('<span class="arr">→</span>');
+  } else { chainEl.textContent=''; }
+}
+
+document.getElementById('btn-clear').onclick=()=>{
+  paint([]);
+  document.getElementById('ro-kicker').textContent='Anchor';
+  document.getElementById('ro-title').textContent='Petition 050 — Unified Case Timeline';
+  document.getElementById('ro-body').textContent='The petition anchors the business intent. Tap any downstream artefact to see how it resolves back here.';
+  document.getElementById('ro-chain').textContent='';
+};
+
+const tg=document.getElementById('tg');
+function toggleDisclaimer(){
+  const on=tg.classList.toggle('on');
+  tg.setAttribute('aria-checked',on);
+  document.getElementById('disclaimer').style.display=on?'block':'none';
+}
+tg.addEventListener('click',toggleDisclaimer);
+tg.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();toggleDisclaimer();}});
+
+paint([]);
+</script>
+</body>
+</html>

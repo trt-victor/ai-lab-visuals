@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="02-landscape">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Industry stack, "chip to data": click a layer to zoom in; highlight vertically integrated players ----
+const LAYERS = [
+  { id: "data", t: "Your data & processes", c: C.yellow, tag: "Where differentiation lives", d: "Proprietary data, process knowledge and the right to act on it. The only layer competitors cannot rent.", econ: "Owned by the enterprise. Quality and access rights decide what every layer below can deliver.", q: "Which of our data is unique, clean enough, and legally usable?", seg: { "Data platforms": ["Snowflake", "Databricks", "Microsoft Fabric", "Google BigQuery"], "Systems of record": ["SAP", "Salesforce", "ServiceNow", "Workday"], "Yours alone": ["Customer history", "Process logs", "Documents & contracts", "Expert judgement"] } },
+  { id: "apps", t: "Applications & agents", c: C.orange, tag: "Where users meet AI", d: "Assistants, copilots and agents embedded in work. Thousands of entrants; most value is captured by whoever owns the workflow.", econ: "Low barriers, fast commoditisation. Distribution and workflow ownership beat model quality.", q: "Buy the copilot inside the tool we already use, or build our own agent?", seg: { "Horizontal assistants": ["ChatGPT", "Claude", "Gemini", "Microsoft Copilot"], "Enterprise suites": ["Salesforce Agentforce", "ServiceNow", "SAP Joule", "Workday"], "Coding": ["GitHub Copilot", "Cursor", "Claude Code"], "Vertical": ["Legal", "Health", "Finance", "Customer service"] } },
+  { id: "tools", t: "Tooling & orchestration", c: C.green, tag: "Where engineering happens", d: "Everything between a model and a working system: orchestration, retrieval, evaluation, guardrails, observability, agent protocols.", econ: "Fragmented and largely open source. Switching costs are low today and rising as platforms consolidate.", q: "Which of these do we standardise on, and which stay swappable?", seg: { "Orchestration": ["LangChain / LangGraph", "LlamaIndex", "Semantic Kernel"], "Model hubs & runtimes": ["Hugging Face", "Ollama", "vLLM"], "Retrieval": ["Pinecone", "Weaviate", "pgvector", "Graph stores"], "Evaluation & guardrails": ["Evals", "Tracing", "Policy engines"], "Protocols": ["MCP", "Agent-to-agent"] } },
+  { id: "models", t: "Foundation models", c: C.magenta, tag: "The engines", d: "Large general models trained once at very high cost and reused everywhere. A handful of labs at the frontier, a long tail of open models behind.", econ: "Training costs run to billions. Prices per token fall fast; capability gaps between leaders close within months.", q: "Do we need the frontier, or is a smaller or open model enough for this task?", seg: { "Closed frontier": ["OpenAI", "Anthropic", "Google DeepMind", "xAI"], "Open weights": ["Meta Llama", "Mistral", "Google Gemma", "Alibaba Qwen", "DeepSeek"], "Specialised": ["Speech", "Vision", "Embeddings", "Code"] } },
+  { id: "cloud", t: "Cloud & compute", c: C.blue, tag: "Rented capacity", d: "Data-centre capacity sold by the hour or the token. Most enterprises meet AI through their existing cloud contract.", econ: "Capital-intensive and concentrated in three hyperscalers, with specialist GPU clouds growing.", q: "Does our cloud agreement give us the models, regions and capacity we need?", seg: { "Hyperscalers": ["Microsoft Azure", "Amazon Web Services", "Google Cloud", "Oracle"], "GPU clouds": ["CoreWeave", "Lambda", "Nebius"], "Sovereign & on-prem": ["EU sovereign clouds", "Private data centres"] } },
+  { id: "chips", t: "Chips & hardware", c: C.cyan, tag: "The bottleneck", d: "Accelerators and the machines that make them. The scarcest layer of the stack and the hardest to enter.", econ: "Extreme concentration: one dominant GPU designer, one leading-edge foundry, one maker of EUV lithography machines.", q: "Mostly indirect: capacity, price and export rules flow up from here.", seg: { "Accelerator design": ["NVIDIA", "AMD", "Broadcom"], "Custom silicon": ["Google TPU", "AWS Trainium", "Microsoft Maia", "Apple silicon"], "Manufacturing": ["TSMC", "Samsung", "ASML (lithography)"], "Memory & network": ["SK Hynix", "Micron", "Arista"] } },
+  { id: "energy", t: "Energy & data centres", c: C.purple, tag: "The physical limit", d: "Power, cooling, land and grid connections. AI growth is now planned in gigawatts.", econ: "Multi-year lead times. Grid access, not chips, is becoming the constraint in many regions.", q: "What is the energy and carbon footprint of our AI use, and who reports it?", seg: { "Power": ["Grid operators", "Renewables", "Nuclear agreements"], "Facilities": ["Equinix", "Digital Realty", "Hyperscaler campuses"], "Cooling": ["Liquid cooling", "Heat reuse"] } },
+];
+const SPAN = { "Google": ["chips", "cloud", "models", "tools", "apps", "data"], "Microsoft": ["chips", "cloud", "tools", "apps", "data"], "Amazon": ["chips", "cloud", "models", "apps"], "NVIDIA": ["chips", "cloud", "tools"], "Meta": ["models", "apps", "energy"], "OpenAI": ["models", "apps", "energy"], "Anthropic": ["models", "tools", "apps"] };
+const bar = h("div", { class: "bar" }, stage);
+h("span", { class: "hint", text: "Vertical integration:" }, bar);
+const spanSeg = seg(bar, [["none", "Off"], ...Object.keys(SPAN).map((k) => [k, k])], "none", paint);
+const stack = h("div", { style: "display:flex;flex-direction:column;gap:8px" }, stage), rows = {};
+let openId = null;
+for (const L of LAYERS) {
+  const r = h("div", { class: "glass", style: `border-color:${hexA(L.c, 0.7)};background:linear-gradient(90deg,${hexA(L.c, 0.22)},${hexA(L.c, 0.04)});padding:14px 20px;cursor:pointer;transition:opacity .25s,box-shadow .25s`, on: { click: () => pick(L.id) } }, stack);
+  const head = h("div", { style: "display:flex;align-items:baseline;gap:14px;flex-wrap:wrap" }, r);
+  h("b", { style: "font-size:19px", text: L.t }, head); h("span", { style: `font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:${L.c}`, text: L.tag }, head);
+  const prev = h("span", { class: "hint", style: "margin-left:auto", text: Object.values(L.seg).flat().slice(0, 4).join(" · ") + " …" }, head);
+  const body = h("div", { hidden: "", style: "display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin-top:14px" }, r);
+  for (const k in L.seg) { const col = h("div", {}, body); h("div", { style: "font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:8px", text: k }, col); const w = h("div", { style: "display:flex;flex-wrap:wrap;gap:6px" }, col); for (const n of L.seg[k]) h("span", { class: "chip", text: n }, w); }
+  rows[L.id] = { r, body, prev };
+}
+h("p", { class: "hint", style: "margin-top:12px", text: "Company names are examples of who plays where, not a ranking or a complete list. Tap a layer to open it." }, stage);
+const ro = readout(side), conc = card(side, "How concentrated is each layer?");
+const CONC = { data: 10, apps: 20, tools: 25, models: 70, cloud: 80, chips: 92, energy: 45 };
+conc.body.innerHTML = LAYERS.map((L) => `<div class="field" style="margin-bottom:8px"><div class="row"><span>${L.t}</span><b>${CONC[L.id] > 75 ? "few players" : CONC[L.id] > 40 ? "consolidating" : "many players"}</b></div><div style="height:6px;border-radius:3px;background:rgba(255,255,255,.14)"><div style="height:6px;border-radius:3px;width:${CONC[L.id]}%;background:${L.c}"></div></div></div>`).join("") + '<p class="hint">Illustrative. The further down the stack, the fewer suppliers and the higher the capital needed.</p>';
+const act = card(side, "Where an enterprise acts");
+act.body.innerHTML = "<p>Most organisations <b>rent</b> the bottom four layers and <b>decide</b> in the top three: which applications to buy, which tooling to standardise, and how to put their own data to work.</p>";
+function pick(id) {
+  openId = openId === id ? null : id;
+  for (const L of LAYERS) { const o = rows[L.id]; o.body.hidden = L.id !== openId; o.prev.hidden = L.id === openId; o.r.style.boxShadow = L.id === openId ? `0 0 0 2px ${L.c}, 0 0 30px ${hexA(L.c, 0.35)}` : "none"; }
+  const L = LAYERS.find((l) => l.id === (openId || id));
+  ro.set(L.tag, L.t, `${L.d}<p style="margin-top:10px"><b>Economics:</b> ${L.econ}</p><p style="margin-top:8px"><b>The client question:</b> ${L.q}</p>`);
+  paint(spanSeg.value);
+}
+function paint(co) {
+  for (const L of LAYERS) rows[L.id].r.style.opacity = co === "none" || !co || SPAN[co].includes(L.id) ? 1 : 0.28;
+  if (co && co !== "none") ro.set("Vertical integration", `${co} spans ${SPAN[co].length} of 7 layers`, `Integrated players control cost and supply across layers: <b>${SPAN[co].map((i) => LAYERS.find((l) => l.id === i).t).join(", ")}</b>.<p style="margin-top:8px">For a buyer this means strong bundles and real lock-in. The more layers one supplier holds, the more a model choice is also a cloud, tooling and data choice.</p>`);
+}
+pick("models");
+
+</script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="15-agentic-loop">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- The agentic loop and the harness: a simulated coding agent. Switch harness features off and the run changes. ----
+const F = { tools: ["Tools", "Read, search, edit, run", true], verify: ["Verification", "Run the tests before claiming success", true], perms: ["Permissions", "Ask before risky actions", true], ctx: ["Context management", "Trim and summarise large outputs", true], mem: ["Memory", "Project notes loaded at the start", true] };
+const PH = { gather: ["Gather context", C.cyan, 250, 150], decide: ["Decide", C.purple, 550, 150], act: ["Act", C.green, 550, 370], check: ["Verify", C.orange, 250, 370] };
+// a run is a list of steps: [phase, title, detail, tokens added, flag]
+function buildRun() {
+  const f = Object.fromEntries(Object.keys(F).map((k) => [k, F[k][2]])), R = [];
+  const add = (ph, t, d, tok = 400, flag) => R.push({ ph, t, d, tok, flag });
+  add("gather", "Task received", "“test_invoice_total is failing. Fix it.”", 300);
+  if (f.mem) add("gather", "Memory loaded", "Project notes: “Run tests with <span class='y'>make test</span>. Never edit files under <span class='y'>generated/</span>. Open a pull request; never push to main.”", 500, "mem");
+  if (!f.tools) { add("decide", "No tools available", "“I cannot see your code. A failing total is often a rounding problem. You could try rounding per line instead of on the sum…”", 300); R.end = ["bad", "A chatbot, not an agent", "Without tools the model can only talk. It gave plausible advice about code it has never seen. The loop never started."]; return R; }
+  add("gather", "Tool: read_file(tests/test_invoice.py)", "expects total == 121.00, got 120.99", 900, "tools");
+  add("gather", f.mem ? "Tool: grep “def total”" : "Tool: grep “def total”", f.mem ? "found billing/invoice.py:42 (and generated/invoice_pb.py, skipped: generated)" : "found generated/invoice_pb.py:310 and billing/invoice.py:42", 700, "tools");
+  add("decide", "Hypothesis", "VAT is rounded per line, then summed. It should be rounded once on the total.", 350);
+  if (!f.mem) { add("act", "Tool: edit_file(generated/invoice_pb.py)", "<span class='r'>Edited a generated file. The change will be overwritten at the next build.</span>", 600, "bad"); }
+  add("act", "Tool: edit_file(billing/invoice.py)", "moved round() from the line loop to the total", 600, "tools");
+  if (!f.verify) { add("decide", "Done", "“Fixed! The total is now rounded correctly.”", 200); R.end = ["bad", "Reported success without checking", "The agent never ran the tests. The original test passes, but <b>test_discount now fails</b> and nobody knows. Verification is what turns a guess into a result."]; return R; }
+  add("check", `Tool: run(${f.mem ? "make test" : "pytest"})`, f.ctx ? "41 passed, <span class='r'>1 failed</span>: test_discount (output trimmed to the failure)" : "41 passed, <span class='r'>1 failed</span>: test_discount … followed by 38,000 tokens of raw log", f.ctx ? 800 : 38000, f.ctx ? "ctx" : "bad");
+  if (!f.ctx) { add("decide", "Context overflow", "<span class='r'>The window is full. The earliest messages, including the task, have been dropped.</span>", 0, "bad"); add("act", "Tool: edit_file(README.md)", "<span class='r'>“Improved the documentation.”</span> The agent has lost track of what it was asked.", 400, "bad"); R.end = ["bad", "Lost the plot", "One unfiltered tool result filled the context window and pushed the task out. The agent kept working, confidently, on something else. Managing context is the harness's job, not the model's."]; return R; }
+  add("decide", "Second iteration", "The discount is applied after rounding. It must be applied before.", 350);
+  add("act", "Tool: edit_file(billing/invoice.py)", "reordered discount and rounding", 500, "tools");
+  add("check", "Tool: run(make test)", "<span class='g'>42 passed</span>", 500, "verify");
+  if (f.perms) { add("act", "Wants to run: git push origin main", "<span class='y'>Permission check: pushing to main is not allowed. Stopped and asked.</span>", 300, "perms"); add("act", "Tool: open_pull_request()", "PR #482 opened with the diff and the test results attached", 400, "tools"); R.end = ["good", "Done, verified, and inside the rules", "Two iterations, tests green, a pull request for a human to review. Each harness feature did one job: tools let it act, verification caught its own mistake, permissions stopped the push, context management kept the task in view."]; }
+  else { add("act", "Tool: run(git push --force origin main)", "<span class='r'>Pushed straight to main, overwriting a colleague's commit.</span>", 300, "bad"); R.end = ["bad", "Right fix, wrong action", "The code is correct and the tests pass. The agent then did something nobody had authorised, because nothing was there to ask. Capability without permissions is the real risk in agents."]; }
+  return R;
+}
+const fw = h("div", { style: "display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin-bottom:10px" }, stage), fEl = {};
+for (const k in F) { const c = h("div", { class: "glass", style: "padding:10px 12px;transition:box-shadow .2s" }, fw); toggle(c, `<b>${F[k][0]}</b>`, true, (v) => { F[k][2] = v; reset(); }); h("p", { class: "hint", style: "margin-top:4px", text: F[k][1] }, c); fEl[k] = c; }
+const g2 = h("div", { class: "grid2" }, stage), svW = h("div", {}, g2), trW = h("div", {}, g2);
+const sv = svg(svW, 800, 520), N = {};
+s("rect", { x: 30, y: 40, width: 740, height: 450, rx: 34, fill: "rgba(255,230,0,.04)", stroke: C.yellow, "stroke-width": 2, "stroke-dasharray": "8 8" }, sv); text(sv, 56, 72, "HARNESS", { size: 13, weight: 700, fill: C.yellow, anchor: "start", "letter-spacing": 2 });
+const order = ["gather", "decide", "act", "check"], E = [];
+for (const k of order) { const [t, c, x, y] = PH[k]; N[k] = node(sv, { x, y, w: 200, h: 80, label: t, color: c, size: 20 }); }
+order.forEach((k, i) => E.push(link(sv, N[k], N[order[(i + 1) % 4]], { color: "rgba(255,255,255,.45)", curve: 30 })));
+const core = node(sv, { x: 400, y: 260, w: 130, h: 60, label: "Model", color: C.magenta, size: 18 });
+const itT = text(sv, 400, 458, "", { size: 14, weight: 700, fill: C.yellow });
+h("div", { class: "eyebrow", style: "margin-bottom:6px", text: "Transcript" }, trW); const tr = h("div", { class: "code mono", style: "height:440px;overflow:auto;font-size:12.5px" }, trW);
+const bar = h("div", { class: "bar", style: "margin-top:10px" }, stage);
+const playB = h("button", { class: "btn primary", text: "Run the agent", on: { click: play } }, bar); h("button", { class: "btn", text: "Step ›", on: { click: () => step() } }, bar); h("button", { class: "btn", text: "Reset", on: { click: reset } }, bar);
+const K = kpis(side, [["it", "Loop iterations"], ["tok", "Context used"], ["calls", "Tool calls"]]);
+const ro = readout(side), def = card(side, "So what is a harness?");
+def.body.innerHTML = "<p>The <b>model</b> only ever does one thing: read text, write text. The <b>loop</b> calls it again and again. The <b>harness</b> is the software that runs that loop and decides what the model can see, what it can do, when it must check, and when it must stop.</p><p>Same model, different harness: a completely different agent. That is why the harness, not the model, is where most engineering now goes.</p>";
+let run, i, busy, tok, its, calls, lastPh;
+function reset() { run = buildRun(); i = 0; tok = 1200; its = 0; calls = 0; lastPh = null; tr.innerHTML = ""; itT.textContent = ""; for (const k in N) N[k].active(null); for (const k in fEl) fEl[k].style.boxShadow = "none"; K.it(0); K.tok("1%"); K.calls(0); ro.set("Ready", "Run the agent with every feature on first", "Then switch one feature off at a time and run it again. Each one prevents a different, specific failure."); }
+async function step() {
+  if (busy || i >= run.length) return; busy = true; const st = run[i], [name, c] = PH[st.ph];
+  if (lastPh && lastPh !== st.ph) { const a = order.indexOf(lastPh), b = order.indexOf(st.ph); if ((a + 1) % 4 === b) await token(sv, E[a], { color: c, ms: 450, r: 9 }); if (st.ph === "decide" && lastPh === "check") { its++; } }
+  if (st.ph === "decide" && lastPh === "gather" && its === 0) its = 1;
+  for (const k in N) N[k].active(k === st.ph ? true : null); lastPh = st.ph;
+  for (const k in fEl) fEl[k].style.boxShadow = st.flag === k ? `0 0 0 2px ${C.yellow}, 0 0 24px rgba(255,230,0,.4)` : "none";
+  tok += st.tok; if (/^Tool|Wants/.test(st.t)) calls++;
+  h("div", { style: "margin-bottom:8px", html: `<span style="color:${c};font-weight:700">${name.toUpperCase()}</span> <span class="${st.flag === "bad" ? "r" : ""}" style="font-weight:700">${st.t}</span>\n<span class="d">  ${st.d}</span>` }, tr); tr.scrollTop = 1e6;
+  K.it(its); K.tok(`${Math.min(100, Math.round((tok / 40000) * 100))}%`, tok > 36000 ? C.red : tok > 20000 ? C.yellow : C.green, "of a 40k window"); K.calls(calls); itT.textContent = its ? `iteration ${its}` : "";
+  i++; if (i >= run.length) { const [kind, t, b] = run.end; ro.set(kind === "good" ? "Outcome" : "Failure", t, b); ro.style.borderLeftColor = kind === "good" ? C.green : C.red; h("div", { html: `<span class="${kind === "good" ? "g" : "r"}" style="font-weight:700">■ ${t}</span>` }, tr); tr.scrollTop = 1e6; } else ro.style.borderLeftColor = C.yellow;
+  busy = false;
+}
+async function play() { reset(); playB.disabled = true; while (i < run.length) { await step(); await wait(900); } playB.disabled = false; }
+reset();
+
+</script>
+</body>
+</html>

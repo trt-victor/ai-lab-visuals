@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Self-test · EY.ai Lab prototypes</title>
+<link rel="stylesheet" href="assets/lab.css"><script src="assets/lab.js"></script></head>
+<body><main style="padding:30px;max-width:900px;margin:0 auto"><h1 style="margin-bottom:6px">Self-test</h1>
+<p class="hint" style="margin-bottom:16px">Loads every page in a hidden frame for two seconds and reports script errors. Serve the folder over http (file:// blocks frames in some browsers).</p>
+<table class="t" id="out"></table><p id="sum" style="margin-top:16px;font-weight:700"></p>
+<iframe id="f" style="width:1400px;height:900px;position:absolute;left:-3000px;top:0;border:0"></iframe></main>
+<script>
+// Each page posts {labError} to its parent on any uncaught error (see lab.js).
+(async () => {
+  const out = document.getElementById("out"), f = document.getElementById("f"), res = [];
+  let errs = [];
+  addEventListener("message", (e) => e.data && e.data.labError && errs.push(e.data.labError));
+  const only = new URLSearchParams(location.search).get("only"), poke = new URLSearchParams(location.search).has("poke");
+  for (const p of Lab.PAGES.filter((p) => !only || p.id.startsWith(only))) {
+    errs = [];
+    const ok = await fetch(p.file, { method: "HEAD" }).then((r) => r.ok).catch(() => false);
+    if (ok) { f.src = p.file + "?t=" + Date.now(); await new Promise((r) => (f.onload = r)); await Lab.wait(2000);
+      try { const d = f.contentDocument; if (!d.querySelector(".top h1")) errs.push("shell did not render"); if (!d.getElementById("stage").children.length) errs.push("stage is empty"); } catch (e) { errs.push("frame not readable: " + e.message); }
+      if (poke) try { // press everything once: buttons, chips, segments, switches, selects, sliders, clickable shapes
+        const d = f.contentDocument, w = f.contentWindow, main = d.querySelector("main");
+        const ev = (el, type) => el.dispatchEvent(new w.Event(type, { bubbles: true }));
+        for (const sel of main.querySelectorAll("select")) for (const o of [...sel.options]) { sel.value = o.value; ev(sel, "change"); await Lab.wait(40); }
+        for (const r of main.querySelectorAll("input[type=range]")) for (const v of [r.min, r.max, (+r.min + +r.max) / 2]) { r.value = v; ev(r, "input"); await Lab.wait(20); }
+        for (const c of main.querySelectorAll("input[type=checkbox]")) { c.click(); await Lab.wait(60); c.click(); await Lab.wait(30); }
+        for (const q of ["svg g[style*=cursor]", ".chip.tap", ".seg button", "button.btn", ".glass[style*=cursor]", "th[data-r]"]) { const n = main.querySelectorAll(q).length; for (let i = 0; i < n; i++) { const el = main.querySelectorAll(q)[i]; if (!el) break; el.dispatchEvent(new w.MouseEvent("click", { bubbles: true })); await Lab.wait(q === "button.btn" ? 150 : 35); } }
+        await Lab.wait(1500);
+      } catch (e) { errs.push("poke: " + e.message); } }
+    else errs.push("missing file");
+    res.push({ id: p.id, errors: errs.slice() });
+    const tr = Lab.h("tr", {}, out); Lab.h("td", { html: `<a href="${p.file}">${p.id}</a>` }, tr); Lab.h("td", { text: errs.length ? errs.join(" | ") : "ok", style: `color:${errs.length ? "#ff6b6b" : "#3ee0a0"}` }, tr);
+  }
+  const bad = res.filter((r) => r.errors.length);
+  document.getElementById("sum").textContent = `${res.length - bad.length} of ${res.length} pages ok`;
+  window.__results = res; document.title = "DONE " + document.title;
+})();
+</script></body></html>

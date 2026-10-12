@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="26-economics">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Cost & compute economics: a workload calculator. All prices are illustrative inputs, not vendor quotes. ----
+const TIER = { small: ["Small model", 0.25, 1.25], mid: ["Mid-size model", 3, 15], front: ["Frontier model", 15, 75] }; // $ per million tokens: input, output
+let P = { req: 20000, tin: 6000, tout: 600, tier: "mid", cache: 30, steps: 1, gpu: 9000, cap: 60000 };
+const ctl = card(side, "The workload");
+const fmtN = (v) => v.toLocaleString();
+slider(ctl.body, { label: "Requests per day", min: 2, max: 6, step: 0.05, value: Math.log10(P.req), fmt: (v) => fmtN(Math.round(10 ** v / 10) * 10) }, (v) => { P.req = Math.round(10 ** v / 10) * 10; draw(); });
+slider(ctl.body, { label: "Input per request (tokens)", min: 500, max: 60000, step: 500, value: P.tin, fmt: fmtN }, (v) => { P.tin = v; draw(); });
+slider(ctl.body, { label: "Output per request (tokens)", min: 100, max: 8000, step: 100, value: P.tout, fmt: fmtN }, (v) => { P.tout = v; draw(); });
+slider(ctl.body, { label: "Agent loop: model calls per request", min: 1, max: 25, value: P.steps, fmt: (v) => (v === 1 ? "1 (single call)" : `${v} steps`) }, (v) => { P.steps = v; draw(); });
+slider(ctl.body, { label: "Input served from cache", min: 0, max: 90, step: 5, value: P.cache, fmt: (v) => v + "%" }, (v) => { P.cache = v; draw(); });
+const tc = card(side, "Model tier (illustrative $ per million tokens)"); seg(tc.body, Object.entries(TIER).map(([k, v]) => [k, `${v[0]} · ${v[1]}/${v[2]}`]), P.tier, (v) => { P.tier = v; draw(); });
+const lc = card(side, "Running it yourself");
+slider(lc.body, { label: "GPU server, all-in per month ($)", min: 2000, max: 40000, step: 500, value: P.gpu, fmt: fmtN }, (v) => { P.gpu = v; draw(); });
+slider(lc.body, { label: "Requests one server handles per day", min: 5000, max: 300000, step: 5000, value: P.cap, fmt: fmtN }, (v) => { P.cap = v; draw(); });
+const Kw = h("div", { style: "margin-bottom:12px" }, stage), K = kpis(Kw, [["req", "Per request"], ["mo", "Per month"], ["yr", "Per year"], ["x", "Agent multiplier"], ["be", "Self-host break-even"]]);
+const sv = svg(stage, 1000, 500), g = s("g", {}, sv), ro = readout(side);
+// one request: step i resends the whole context so far (input grows by the previous output + a tool result)
+function cost(p = P) {
+  const [, pin, pout] = TIER[p.tier]; let inTok = 0, outTok = 0; const per = [];
+  for (let i = 0; i < p.steps; i++) { const ti = p.tin + i * (p.tout + 800); inTok += ti; outTok += p.tout; per.push(ti); }
+  const cached = inTok * (p.cache / 100), fresh = inTok - cached, cIn = (fresh * pin) / 1e6, cCa = (cached * pin * 0.1) / 1e6, cOut = (outTok * pout) / 1e6;
+  return { cIn, cCa, cOut, req: cIn + cCa + cOut, per, inTok, outTok };
+}
+const usd = (v) => (v >= 1e6 ? `$${(v / 1e6).toFixed(2)}m` : v >= 1e4 ? `$${Math.round(v / 1000)}k` : v >= 100 ? `$${Math.round(v).toLocaleString()}` : v >= 1 ? `$${v.toFixed(2)}` : `${(v * 100).toFixed(v < 0.01 ? 2 : 1)}¢`);
+function draw() {
+  g.innerHTML = ""; const c = cost(), mo = c.req * P.req * 30, single = cost({ ...P, steps: 1 }).req, servers = Math.ceil(P.req / P.cap), local = servers * P.gpu, be = Math.ceil(P.gpu / (c.req * 30));
+  K.req(usd(c.req)); K.mo(usd(mo), mo > 100000 ? C.red : mo > 10000 ? C.yellow : C.green); K.yr(usd(mo * 12)); K.x(`${(c.req / single).toFixed(1)}×`, c.req / single > 8 ? C.red : c.req / single > 2 ? C.yellow : C.green, "versus a single call"); K.be(`${fmtN(be)}/day`, P.req > be ? C.green : null, P.req > be ? "you are above it" : "you are below it");
+  // left chart: where one request's cost goes
+  text(g, 20, 28, "WHERE ONE REQUEST'S COST GOES", { size: 12, weight: 700, fill: C.yellow, anchor: "start", "letter-spacing": 1.5 });
+  const parts = [["Fresh input", c.cIn, C.blue], ["Cached input", c.cCa, C.cyan], ["Output", c.cOut, C.magenta]]; let x = 20; const W = 440;
+  parts.forEach(([l, v, col], i) => { const w = (v / c.req) * W; s("rect", { x, y: 44, width: Math.max(1, w - 2), height: 44, rx: 8, fill: col }, g); if (w > 56) text(g, x + w / 2, 71, `${Math.round((v / c.req) * 100)}%`, { size: 14, weight: 700, fill: "#0b0718" }); text(g, 20 + i * 150, 112, `■ ${l} ${usd(v)}`, { size: 12, anchor: "start", fill: col, weight: 700 }); x += w; });
+  // context growth per step
+  text(g, 20, 160, "INPUT SENT AT EACH STEP OF THE LOOP", { size: 12, weight: 700, fill: C.yellow, anchor: "start", "letter-spacing": 1.5 });
+  const mx = Math.max(...c.per), bw = Math.min(40, 440 / c.per.length);
+  c.per.forEach((v, i) => { const hh = (v / mx) * 240; s("rect", { x: 20 + i * bw, y: 440 - hh, width: Math.max(2, bw - 3), height: hh, rx: 4, fill: hexA(C.blue, 0.4 + 0.6 * (i / Math.max(1, c.per.length - 1))) }, g); });
+  s("line", { x1: 20, x2: 460, y1: 440, y2: 440, stroke: "rgba(255,255,255,.3)" }, g); text(g, 20, 462, "step 1", { size: 11, anchor: "start", fill: "rgba(255,255,255,.55)", weight: 400 }); if (P.steps > 1) text(g, 20 + c.per.length * bw, 462, `step ${P.steps}: ${fmtN(c.per.at(-1))} tokens`, { size: 11, anchor: "end", fill: "rgba(255,255,255,.55)", weight: 400 });
+  text(g, 20, 486, P.steps > 1 ? "Each step resends everything so far. Cost grows with the square of the number of steps." : "A single call: the input is sent once.", { size: 12, anchor: "start", fill: "rgba(255,255,255,.7)", weight: 400 });
+  // right chart: API vs self-hosted across volume (log x)
+  const x0 = 560, y0 = 440, cw = 410, chh = 360; text(g, x0, 28, "MONTHLY COST AS VOLUME GROWS", { size: 12, weight: 700, fill: C.yellow, anchor: "start", "letter-spacing": 1.5 });
+  s("path", { d: `M${x0} ${y0 - chh} V${y0} H${x0 + cw}`, fill: "none", stroke: "rgba(255,255,255,.3)" }, g);
+  const vols = Array.from({ length: 41 }, (_, i) => 10 ** (2 + i / 10)), api = vols.map((v) => v * c.req * 30), loc = vols.map((v) => Math.ceil(v / P.cap) * P.gpu), lo = Math.log10(Math.max(1, Math.min(api[0], P.gpu) * 0.5)), hi = Math.log10(Math.max(api.at(-1), loc.at(-1)) * 1.5);
+  const px = (v) => x0 + ((Math.log10(v) - 2) / 4) * cw, py = (v) => y0 - clamp((Math.log10(Math.max(v, 1)) - lo) / (hi - lo), 0, 1) * chh, line = (arr, col, dash) => s("path", { d: arr.map((v, i) => `${i ? "L" : "M"}${px(vols[i])} ${py(v)}`).join(" "), fill: "none", stroke: col, "stroke-width": 3, "stroke-dasharray": dash }, g);
+  line(api, C.magenta); line(loc, C.green, "6 5");
+  [100, 1000, 10000, 100000, 1000000].forEach((v) => text(g, px(v), y0 + 18, v >= 1000 ? `${v / 1000}k` : v, { size: 10.5, fill: "rgba(255,255,255,.5)", weight: 400 })); text(g, x0 + cw, y0 + 38, "requests per day →", { size: 11, anchor: "end", fill: "rgba(255,255,255,.55)", weight: 400 }); text(g, x0 + 6, y0 - chh + 4, "$ per month (log scale)", { size: 11, anchor: "start", fill: "rgba(255,255,255,.55)", weight: 400 });
+  s("line", { x1: px(P.req), x2: px(P.req), y1: y0, y2: y0 - chh, stroke: C.yellow, "stroke-dasharray": "3 5" }, g); s("circle", { cx: px(P.req), cy: py(mo), r: 8, fill: C.magenta, stroke: "#fff", "stroke-width": 2 }, g); s("circle", { cx: px(P.req), cy: py(local), r: 8, fill: C.green, stroke: "#fff", "stroke-width": 2 }, g);
+  text(g, x0 + 150, 60, `— API: ${usd(mo)} / month`, { size: 13, anchor: "start", fill: C.magenta, weight: 700 }); text(g, x0 + 150, 82, `- - Self-hosted: ${usd(local)} / month (${servers} server${servers > 1 ? "s" : ""})`, { size: 13, anchor: "start", fill: C.green, weight: 700 });
+  const big = parts.slice().sort((a, b) => b[1] - a[1])[0][0];
+  ro.set("What drives this bill", P.steps > 6 ? "The loop, not the model" : big === "Output" ? "Output tokens" : "The size of the context", P.steps > 6 ? `An agent making ${P.steps} calls costs <b>${(c.req / single).toFixed(0)}×</b> a single call, because the context is resent and grows at every step. Trimming tool output and compacting history matters more than the price list.` : big === "Output" ? "Output is priced several times higher than input. Asking for shorter, structured answers is the cheapest optimisation there is." : `Most of the spend is input you send again and again: instructions, tools, documents. <b>Caching</b> (now ${P.cache}%) and sending less are the first levers. A smaller model for easy cases is the second.` + `<p style="margin-top:8px" class="hint">Self-hosting trades a variable bill for a fixed one. Below about ${fmtN(be)} requests a day the server sits idle; above it, it pays for itself, if a smaller open model is good enough for the task.</p>`);
+}
+h("p", { class: "hint", style: "margin:6px 4px 0", text: "Prices, cache discount (90%) and server capacity are illustrative inputs. Replace them with your own contract figures." }, stage);
+draw();
+
+</script>
+</body>
+</html>

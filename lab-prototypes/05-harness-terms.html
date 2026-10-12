@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="05-harness-terms">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- The vocabulary as nested layers: model → prompt/context/tools → loop → harness → agent → platform ----
+const T = {
+  model: { t: "Model", c: C.magenta, d: "The trained network. Text in, text out. It has no memory between calls, cannot act, and knows nothing after its training date.", an: "The engine.", miss: "Nothing happens without it, but on its own it only talks.", foundry: "The LLM a Forge or Appraise node calls." },
+  prompt: { t: "Prompt", c: C.blue, d: "The instruction for this call: the role, the task, the rules, the format. Written by people, usually in layers.", an: "The route instructions.", miss: "The model guesses what you want, and guesses differently each time.", foundry: "A node's instructions plus the laws that apply." },
+  context: { t: "Context", c: C.cyan, d: "Everything else the model is shown for this call: documents, history, memory, tool results. Limited by the context window.", an: "What is in view through the windscreen.", miss: "The model fills gaps with plausible inventions.", foundry: "The artefact, its feedback history, and the petition." },
+  tools: { t: "Tools", c: C.green, d: "Functions the model may ask to run: search, read a file, query a system, send a message. The model requests; software executes.", an: "Steering, pedals, indicators.", miss: "The model can describe an action but never perform it.", foundry: "Capabilities granted to a node: read artefact, stamp, attest." },
+  loop: { t: "Loop", c: C.orange, d: "Call the model, run the tools it asked for, feed the results back, call again. Repeats until the task is done or a limit is hit.", an: "Driving: look, steer, look again.", miss: "You get one answer and no chance to check or correct it.", foundry: "A Foundry Cycle: forge, quench, appraise, refine." },
+  harness: { t: "Harness", c: C.yellow, d: "The software that runs the loop and everything around the model: tool execution, permissions, context management, memory, stop conditions, logging.", an: "The car around the engine: brakes, dashboard, seat belts.", miss: "The loop runs unchecked: no limits, no permissions, no record.", foundry: "Sort, the sidecar and the SDK: routing, identity, capability enforcement." },
+  agent: { t: "Agent", c: C.purple, d: "A model in a harness, given a goal and the autonomy to pursue it over many steps.", an: "The car with a driver and a destination.", miss: "You have a chatbot or a fixed pipeline, not something that pursues a goal.", foundry: "A node with a role: generate, judge, refine." },
+  platform: { t: "Platform", c: C.grey, d: "Where many agents run with shared rules: identity, governance, audit, cost control, evaluation, deployment.", an: "The road system: traffic rules, licences, tolls, cameras.", miss: "Every team builds its own agents, with its own rules and no shared evidence.", foundry: "Foundry itself: laws, attestations, exit contracts, friction ledger." },
+};
+const sv = svg(stage, 1000, 640), els = {};
+const ring = (id, x, y, w, hh, rx = 30) => { const g = s("g", { style: "cursor:pointer" }, sv), t = T[id]; const r = s("rect", { x, y, width: w, height: hh, rx, fill: hexA(t.c, 0.07), stroke: t.c, "stroke-width": 2 }, g); const l = text(g, x + 22, y + 30, t.t.toUpperCase(), { size: 13, weight: 700, fill: t.c, anchor: "start", "letter-spacing": 2 }); g.addEventListener("click", (e) => { e.stopPropagation(); pick(id); }); els[id] = r; return g; };
+ring("platform", 15, 15, 970, 610); text(sv, 965, 45, "identity · governance · audit · cost · evaluation", { size: 12, anchor: "end", fill: "rgba(255,255,255,.5)", weight: 400 });
+// other agents on the platform (decorative)
+for (const [x, y] of [[800, 120], [800, 250]]) { s("rect", { x, y, width: 150, height: 90, rx: 18, fill: hexA(C.purple, 0.08), stroke: hexA(C.purple, 0.55), "stroke-dasharray": "5 6" }, sv); text(sv, x + 75, y + 50, "another agent", { size: 12, fill: "rgba(255,255,255,.5)", weight: 400 }); }
+ring("agent", 45, 70, 720, 525); text(sv, 745, 100, "goal + autonomy", { size: 12, anchor: "end", fill: "rgba(255,255,255,.5)", weight: 400 });
+ring("harness", 75, 120, 660, 445, 26); text(sv, 715, 150, "permissions · context management · memory · limits · logs", { size: 12, anchor: "end", fill: "rgba(255,255,255,.5)", weight: 400 });
+ring("loop", 105, 175, 600, 360, 24);
+const boxOf = (id, x, y, w, hh) => { const t = T[id], g = s("g", { style: "cursor:pointer" }, sv); const r = s("rect", { x: x - w / 2, y: y - hh / 2, width: w, height: hh, rx: 16, fill: hexA(t.c, 0.18), stroke: t.c, "stroke-width": 2 }, g); text(g, x, y + 6, t.t, { size: 18, weight: 700 }); g.addEventListener("click", (e) => { e.stopPropagation(); pick(id); }); els[id] = r; return { cx: x, cy: y, w, h: hh }; };
+const nP = boxOf("prompt", 225, 265, 150, 60), nC = boxOf("context", 225, 445, 150, 60), nM = boxOf("model", 405, 355, 160, 96), nT = boxOf("tools", 600, 355, 150, 60);
+link(sv, nP, nM, { color: T.prompt.c }); link(sv, nC, nM, { color: T.context.c });
+const go = edge(sv, [487, 335], [523, 335], { color: T.tools.c }), back = edge(sv, [600, 388], [300, 452], { color: T.orange || C.orange, curve: -70, dash: "6 6" });
+text(sv, 505, 322, "asks", { size: 11, fill: "rgba(255,255,255,.6)", weight: 400 }); text(sv, 470, 492, "results go back into context", { size: 11.5, fill: C.orange, weight: 500 });
+text(sv, 405, 225, "repeat until done or a limit is reached", { size: 12, fill: "rgba(255,255,255,.55)", weight: 400 });
+(async function spin() { for (;;) { await token(sv, go, { color: C.green, ms: 500 }); await token(sv, back, { color: C.orange, ms: 1100 }); await wait(500); } })();
+
+const bar = h("div", { class: "bar", style: "margin:10px 4px 0" }, stage);
+const lens = seg(bar, [["d", "Definition"], ["an", "Car analogy"], ["miss", "Without it"], ["foundry", "In Foundry"]], "d", () => pick(cur));
+const ro = readout(side), tbl = card(side, "One sentence each");
+let cur = "harness";
+function pick(id) {
+  cur = id; const t = T[id];
+  for (const k in els) { els[k].setAttribute("stroke-width", k === id ? 5 : 2); els[k].style.filter = k === id ? `drop-shadow(0 0 14px ${T[k].c})` : "none"; }
+  const L = { d: ["Definition", t.d], an: ["Car analogy", t.an], miss: ["If this layer is missing", t.miss], foundry: ["The same thing in Foundry", t.foundry] }[lens.value];
+  ro.set(L[0], t.t, `${L[1]}${lens.value !== "d" ? `<p style="margin-top:10px" class="hint">${t.d}</p>` : ""}`);
+  tbl.body.innerHTML = `<table class="t">${Object.entries(T).map(([k, v]) => `<tr><td style="white-space:nowrap"><b style="color:${v.c}">${v.t}</b></td><td>${v.an}</td></tr>`).join("")}</table>`;
+}
+pick("harness");
+
+</script>
+</body>
+</html>

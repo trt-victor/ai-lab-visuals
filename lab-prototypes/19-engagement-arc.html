@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="19-engagement-arc">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- The EY engagement arc: five steps as a journey map. DRAFT wording: edit STEPS below to match the deck. ----
+const STEPS = [
+  { t: "Explore", verb: "See what is possible", ey: "A working session in the EY.ai Lab with business and technology leads. We map where confidence, not volume, is the constraint, and pick one case worth proving.", you: "A shared picture of where AI helps, and one concrete case with an owner.", out: ["Opportunity map", "One selected case", "A sponsor"], time: "1–2 weeks", who: "EY.ai Lab", conf: 12 },
+  { t: "Prove", verb: "Prototype on a real case", ey: "We build a working prototype on your case with your data, inside a governed cycle from the first day: explicit laws, automated checks, a human at the gate.", you: "Evidence that it works on your own material, and a first view of the rules that matter.", out: ["Working prototype", "First library of laws", "Measured baseline"], time: "3–6 weeks", who: "EY.ai Lab · EY Studio+", conf: 32 },
+  { t: "Design", verb: "Design the operating model", ey: "Together we design how work will flow: which gates become automated, where people decide, which roles change, and what to build, buy or integrate.", you: "A target operating model and a platform decision you can defend to the board and the regulator.", out: ["Target flows", "Role changes", "Build / integrate decision", "Control framework as laws"], time: "4–8 weeks", who: "EY Digital Engineering · Risk", conf: 52 },
+  { t: "Build", verb: "Stand up the platform and the first flows", ey: "We deploy the platform where your sovereignty rules require, connect it to your systems, and take the first flows to production with your teams.", you: "Flows in production, teams able to operate them, and evidence generated as a by-product.", out: ["Platform in your environment", "First production flows", "Trained flow teams"], time: "3–6 months", who: "EY Digital Engineering · EY AI & Data", conf: 76 },
+  { t: "Scale", verb: "Extend, measure, assure", ey: "We help extend to more flows, tune the rules using friction and cost data, and provide independent assurance over the whole system.", you: "A self-correcting operating model: cost visible, friction attributable, conformity demonstrable.", out: ["More flows live", "Friction and cost reporting", "Assurance report"], time: "Ongoing", who: "EY Assurance · EY.ai Lab", conf: 95 },
+];
+const sv = svg(stage, 1000, 560), path = s("path", { d: "M70 400 C 190 400, 180 250, 290 250 S 400 330, 500 300 S 620 150, 710 170 S 830 120, 930 90", fill: "none", stroke: "rgba(255,255,255,.22)", "stroke-width": 16, "stroke-linecap": "round" }, sv);
+const done = s("path", { d: path.getAttribute("d"), fill: "none", stroke: C.yellow, "stroke-width": 6, "stroke-linecap": "round" }, sv), len = path.getTotalLength(); done.setAttribute("stroke-dasharray", len);
+text(sv, 30, 40, "CONFIDENCE IN AI-PRODUCED WORK ↑", { size: 12, weight: 700, fill: C.yellow, anchor: "start", "letter-spacing": 2 });
+text(sv, 970, 540, "TIME →", { size: 12, weight: 700, fill: C.yellow, anchor: "end", "letter-spacing": 2 });
+const at = [0.04, 0.27, 0.5, 0.74, 0.98], nodes = STEPS.map((S, i) => { const p = path.getPointAtLength(len * at[i]), g = s("g", { style: "cursor:pointer" }, sv); const c = s("circle", { cx: p.x, cy: p.y, r: 30, fill: "#140c2d", stroke: C.yellow, "stroke-width": 3 }, g); text(g, p.x, p.y + 9, i + 1, { size: 26, weight: 700 }); text(g, p.x, p.y + 62, S.t, { size: 20, weight: 700 }); text(g, p.x, p.y + 84, S.verb, { size: 12.5, fill: "rgba(255,255,255,.7)", weight: 400, max: 20 }); g.addEventListener("click", () => go(i)); return { c, p }; });
+const you = s("g", {}, sv); s("circle", { r: 13, fill: C.yellow, filter: "url(#glow)" }, you); text(you, 0, -22, "you", { size: 12, weight: 700, fill: C.yellow });
+const bar = h("div", { class: "bar", style: "margin:6px 4px 0" }, stage);
+h("button", { class: "btn primary", text: "Play the journey", on: { click: async () => { for (let i = 0; i < STEPS.length; i++) { await go(i); await wait(1700); } } } }, bar);
+const tabs = seg(bar, STEPS.map((S, i) => [i, `${i + 1}. ${S.t}`]), 0, (i) => go(+i));
+h("p", { class: "hint", style: "margin:8px 4px 0", text: "Draft: the five step names, durations and EY teams are placeholders written for this prototype. Replace them with the wording from the deck." }, stage);
+const ro = readout(side), K = kpis(side, [["time", "Typical duration"], ["conf", "Confidence"]]);
+const outC = card(side, "What you have at the end"), whoC = card(side, "Who from EY"), cta = card(side, "Where to start");
+cta.body.innerHTML = "<p>Every step ends with something that stands on its own. You can stop after any of them. Most organisations start with <b>one session</b> and <b>one case</b>.</p>";
+let pos = at[0];
+async function go(i) {
+  const S = STEPS[i], from = pos, to = at[i]; tabs.set(i, false);
+  nodes.forEach((n, j) => { n.c.setAttribute("fill", j <= i ? C.yellow : "#140c2d"); n.c.nextSibling.setAttribute("fill", j <= i ? "#111" : "#fff"); n.c.setAttribute("stroke-width", j === i ? 6 : 3); });
+  ro.set(`Step ${i + 1} of 5 · EY can help you`, `${S.t}: ${S.verb.toLowerCase()}`, `<p><b>What EY does.</b> ${S.ey}</p><p style="margin-top:8px"><b>What you get.</b> ${S.you}</p>`);
+  K.time(S.time); K.conf(`${S.conf}%`, C.green, "illustrative"); outC.body.innerHTML = `<ul>${S.out.map((o) => `<li>${o}</li>`).join("")}</ul>`; whoC.body.innerHTML = `<p><b>${S.who}</b></p><p class="hint">Placeholder: confirm the owning teams.</p>`;
+  await tween(700, (q) => { pos = lerp(from, to, q); const p = path.getPointAtLength(len * pos); you.setAttribute("transform", `translate(${p.x} ${p.y - 48})`); done.setAttribute("stroke-dashoffset", len * (1 - pos)); });
+}
+go(0);
+
+</script>
+</body>
+</html>

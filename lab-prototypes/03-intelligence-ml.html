@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="03-intelligence-ml">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Live machine learning: a tiny model trained in the browser by gradient descent on points you can edit ----
+const bar = h("div", { class: "bar" }, stage);
+const dsSeg = seg(bar, [["line", "Two groups"], ["ring", "Ring"], ["xor", "Checkerboard"], ["spiral", "Spirals"]], "line", (v) => { data = make(v); reset(); });
+const mSeg = seg(bar, [["lin", "Simple model (1 line)"], ["nn", "Neural network"]], "lin", (v) => { kind = v; reset(); });
+const runBtn = h("button", { class: "btn primary", text: "Train", on: { click: () => { running = !running; runBtn.textContent = running ? "Pause" : "Train"; } } }, bar);
+h("button", { class: "btn", text: "Reset model", on: { click: () => reset() } }, bar);
+const cv = h("canvas", { style: "width:100%;border-radius:16px;display:block;cursor:crosshair;touch-action:none" }, stage), ctx = cv.getContext("2d");
+h("p", { class: "hint", style: "margin-top:10px", text: "Tap to add a yellow point, shift-tap (or two-finger tap) for a blue one. The shading is what the model currently believes; the brighter, the more certain." }, stage);
+const W = 900, H = 520, GX = 60, GY = 35;
+let data, kind = "lin", net, running = false, epoch = 0, losses = [], addBlue = false;
+
+function make(v) {
+  const pts = [], R = (a, b) => a + Math.random() * (b - a);
+  if (v === "line") for (let i = 0; i < 60; i++) { const c = i % 2; pts.push([R(-0.9, -0.05) * (c ? -1 : 1) + R(-0.25, 0.25), R(-0.8, 0.8) * 0.6 + (c ? 0.25 : -0.25), c]); }
+  if (v === "ring") for (let i = 0; i < 90; i++) { const c = i % 2, r = c ? R(0.6, 0.9) : R(0, 0.32), a = R(0, 6.28); pts.push([r * Math.cos(a), r * Math.sin(a), c]); }
+  if (v === "xor") for (let i = 0; i < 90; i++) { const x = R(-0.9, 0.9), y = R(-0.9, 0.9); if (Math.abs(x) < 0.08 || Math.abs(y) < 0.08) continue; pts.push([x, y, x * y > 0 ? 1 : 0]); }
+  if (v === "spiral") for (let i = 0; i < 70; i++) for (const c of [0, 1]) { const t = (i / 70) * 3.2, r = 0.1 + t * 0.26; pts.push([r * Math.cos(t * 1.9 + c * Math.PI) + R(-0.03, 0.03), r * Math.sin(t * 1.9 + c * Math.PI) + R(-0.03, 0.03), c]); }
+  return pts;
+}
+// model: lin = logistic regression; nn = 2 → 10 → 10 → 1 with tanh
+function reset() {
+  const sizes = kind === "lin" ? [2, 1] : [2, 10, 10, 1];
+  net = sizes.slice(1).map((n, l) => ({ W: Array.from({ length: n }, () => Array.from({ length: sizes[l] }, () => (Math.random() - 0.5) * 1.4)), b: Array(n).fill(0) }));
+  epoch = 0; losses = []; draw(); stats();
+}
+function forward(x, keep) {
+  let a = x; const acts = [a];
+  net.forEach((L, li) => { const last = li === net.length - 1; a = L.W.map((w, j) => { let z = L.b[j]; for (let i = 0; i < w.length; i++) z += w[i] * a[i]; return last ? 1 / (1 + Math.exp(-z)) : Math.tanh(z); }); acts.push(a); });
+  return keep ? acts : a[0];
+}
+function trainStep(lr) {
+  const gW = net.map((L) => L.W.map((w) => w.map(() => 0))), gb = net.map((L) => L.b.map(() => 0)); let loss = 0;
+  for (const [x, y, t] of data) {
+    const acts = forward([x * 2, y * 2], true), p = acts[acts.length - 1][0];
+    loss -= t ? Math.log(p + 1e-9) : Math.log(1 - p + 1e-9);
+    let delta = [p - t];
+    for (let l = net.length - 1; l >= 0; l--) {
+      const aIn = acts[l], nd = Array(aIn.length).fill(0);
+      for (let j = 0; j < delta.length; j++) { gb[l][j] += delta[j]; for (let i = 0; i < aIn.length; i++) { gW[l][j][i] += delta[j] * aIn[i]; nd[i] += delta[j] * net[l].W[j][i]; } }
+      delta = l > 0 ? nd.map((d, i) => d * (1 - aIn[i] * aIn[i])) : nd;
+    }
+  }
+  const n = data.length;
+  net.forEach((L, l) => L.W.forEach((w, j) => { L.b[j] -= (lr * gb[l][j]) / n; w.forEach((_, i) => (w[i] -= (lr * gW[l][j][i]) / n)); }));
+  return loss / n;
+}
+function draw() {
+  const dpr = Math.min(2, devicePixelRatio || 1); cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const cw = W / GX, chh = H / GY;
+  for (let i = 0; i < GX; i++) for (let j = 0; j < GY; j++) {
+    const p = forward([(((i + 0.5) / GX) * 2 - 1) * 2, (((j + 0.5) / GY) * 2 - 1) * 2]), k = Math.abs(p - 0.5) * 2;
+    ctx.fillStyle = p > 0.5 ? `rgba(255,230,0,${0.06 + k * 0.4})` : `rgba(74,163,255,${0.06 + k * 0.4})`; ctx.fillRect(i * cw, j * chh, cw + 1, chh + 1);
+  }
+  for (const [x, y, t] of data) { ctx.beginPath(); ctx.arc(((x + 1) / 2) * W, ((y + 1) / 2) * H, 6.5, 0, 7); ctx.fillStyle = t ? "#ffe600" : "#4aa3ff"; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = "#05030f"; ctx.stroke(); }
+}
+cv.addEventListener("pointerdown", (e) => { const r = cv.getBoundingClientRect(); data.push([((e.clientX - r.left) / r.width) * 2 - 1, ((e.clientY - r.top) / r.height) * 2 - 1, e.shiftKey || addBlue ? 0 : 1]); draw(); stats(); });
+cv.addEventListener("touchstart", (e) => (addBlue = e.touches.length > 1), { passive: true });
+
+const K = kpis(side, [["ep", "Training rounds"], ["acc", "Correct"], ["loss", "Error (loss)"], ["par", "Adjustable numbers"]]);
+const lossCard = card(side, "Error falling as it learns"), lsv = svg(lossCard.body, 340, 90), lpath = s("path", { fill: "none", stroke: C.yellow, "stroke-width": 2.5 }, lsv);
+const ro = readout(side);
+const types = card(side, "Four ways machines learn");
+const TY = { Supervised: "Learns from examples that carry the right answer. This demo. Used for scoring, forecasting, classification.", Unsupervised: "Finds structure in data with no answers given: clusters, anomalies, segments.", "Self-supervised": "Makes its own exercise from raw data: hide the next word, then predict it. This is how language models are trained.", Reinforcement: "Learns by acting and receiving reward. Used for games, robotics and for teaching models to reason over many steps." };
+const tw = h("div", { style: "display:flex;flex-wrap:wrap;gap:6px" }, types.body), tp = h("p", { style: "margin-top:10px" }, types.body);
+Object.keys(TY).forEach((k, i) => { const c = h("span", { class: "chip tap", text: k, on: { click: () => { [...tw.children].forEach((x) => x.classList.toggle("on", x === c)); tp.innerHTML = `<b>${k}.</b> ${TY[k]}`; } } }, tw); if (!i) c.click(); });
+function stats() {
+  let ok = 0; for (const [x, y, t] of data) if (forward([x * 2, y * 2]) > 0.5 === !!t) ok++;
+  const acc = data.length ? ok / data.length : 0, par = net.reduce((n, L) => n + L.W.length * L.W[0].length + L.b.length, 0);
+  K.ep(epoch); K.acc(Math.round(acc * 100) + "%", acc > 0.95 ? C.green : acc > 0.75 ? C.yellow : C.red); K.loss(losses.length ? losses[losses.length - 1].toFixed(3) : "–"); K.par(par, null, kind === "lin" ? "one straight boundary" : "three layers of neurons");
+  if (losses.length > 1) { const mx = Math.max(...losses, 0.7); lpath.setAttribute("d", losses.map((v, i) => `${i ? "L" : "M"}${(i / (losses.length - 1)) * 336 + 2} ${86 - (v / mx) * 80}`).join(" ")); } else lpath.setAttribute("d", "");
+  const stuck = kind === "lin" && dsSeg.value !== "line" && epoch > 150 && acc < 0.85;
+  ro.set(stuck ? "The limit of a simple model" : "What you are watching", stuck ? "One straight line cannot separate this" : kind === "lin" ? "A model with three numbers" : `A model with ${par} numbers`,
+    stuck ? "More training will not help: the model is too simple for the pattern. Switch to <b>Neural network</b>. Extra layers let it bend the boundary. This is the whole idea of deep learning." :
+    "Nobody programmed the boundary. The model starts with random numbers, measures how wrong it is, and nudges every number a little in the direction that reduces the error. Repeat a few hundred times.<p style='margin-top:8px'>A large language model does the same thing with <b>billions</b> of numbers, and its examples are sentences with the next word hidden.</p>");
+}
+data = make("line"); reset();
+(function loop() { if (running) { for (let i = 0; i < 4; i++) { losses.push(trainStep(kind === "lin" ? 0.5 : 0.35)); epoch++; } if (losses.length > 400) losses = losses.filter((_, i) => i % 2 === 0); draw(); stats(); } requestAnimationFrame(loop); })();
+
+</script>
+</body>
+</html>

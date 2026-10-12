@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="22-testing">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Testing as the safety net: real tests run in the browser against AI-proposed changes; then evals for non-deterministic output ----
+// The functions below are real and the tests really execute.
+const VERSIONS = {
+  "Current code": { note: "The version in production today.", fn: function invoiceTotal(lines, vatRate) {
+  let net = 0;
+  for (const l of lines) net += l.qty * l.price;
+  const gross = net * (1 + vatRate);
+  return Math.round(gross * 100) / 100;
+} },
+  "AI change A: tidy-up": { note: "The agent rewrote the loop in a cleaner style. Behaviour unchanged.", fn: function invoiceTotal(lines, vatRate) {
+  const net = lines.reduce((sum, l) => sum + l.qty * l.price, 0);
+  return Math.round(net * (1 + vatRate) * 100) / 100;
+} },
+  "AI change B: looks reasonable": { note: "“Round each line for accuracy.” Reads well. Changes the result by a cent on some invoices.", fn: function invoiceTotal(lines, vatRate) {
+  let gross = 0;
+  for (const l of lines) {
+    gross += Math.round(l.qty * l.price * (1 + vatRate) * 100) / 100;
+  }
+  return Math.round(gross * 100) / 100;
+} },
+  "AI change C: faster": { note: "“Optimised for large invoices.” Breaks on an empty invoice.", fn: function invoiceTotal(lines, vatRate) {
+  let net = lines[0].qty * lines[0].price;
+  for (let i = 1; i < lines.length; i++) net += lines[i].qty * lines[i].price;
+  return Math.round(net * (1 + vatRate) * 100) / 100;
+} },
+};
+const TESTS = [
+  ["one line, 21% VAT", (f) => f([{ qty: 1, price: 100 }], 0.21) === 121],
+  ["several lines are summed", (f) => f([{ qty: 2, price: 10 }, { qty: 1, price: 5 }], 0) === 25],
+  ["rounding happens once, on the total", (f) => f([{ qty: 3, price: 0.335 }, { qty: 3, price: 0.335 }], 0.21) === 2.43],
+  ["empty invoice totals zero", (f) => f([], 0.21) === 0],
+  ["zero VAT leaves the net unchanged", (f) => f([{ qty: 4, price: 2.5 }], 0) === 10],
+];
+let ver = "AI change B: looks reasonable", hasTests = true;
+const bar = h("div", { class: "bar" }, stage);
+const sel = h("select", { class: "btn", on: { change: () => { ver = sel.value; show(); } } }, bar); Object.keys(VERSIONS).forEach((k) => h("option", { value: k, text: k }, sel)); sel.value = ver;
+toggle(bar, "<b>Tests exist</b>", true, (v) => { hasTests = v; show(); });
+h("button", { class: "btn primary", text: "Run the tests", on: { click: runTests } }, bar);
+const g2 = h("div", { class: "grid2" }, stage), cBox = h("div", {}, g2), tBox = h("div", {}, g2);
+h("div", { class: "eyebrow", style: "margin-bottom:6px", text: "The code under review" }, cBox); const codeEl = h("div", { class: "code mono", style: "min-height:210px" }, cBox), noteEl = h("p", { class: "hint", style: "margin-top:8px" }, cBox);
+h("div", { class: "eyebrow", style: "margin-bottom:6px", text: "The safety net" }, tBox); const tEl = h("div", { class: "code mono", style: "min-height:210px" }, tBox), verdict = h("p", { style: "margin-top:8px;font-weight:700" }, tBox);
+function show() { const v = VERSIONS[ver]; codeEl.textContent = v.fn.toString(); noteEl.textContent = v.note; tEl.innerHTML = hasTests ? TESTS.map(([n]) => `<span class="d">○ ${n}</span>`).join("\n") : `<span class="d">(no tests)</span>\n\n<span class="d">A reviewer reads the diff. It looks fine.</span>`; verdict.textContent = ""; ro.set("Before you run", "Would you approve this change?", "Read the code on the left. Decide. Then run the tests."); }
+async function runTests() {
+  const f = VERSIONS[ver].fn; let fails = 0; const truth = TESTS.map(([n, t]) => { try { return t(f); } catch { return false; } }), bad = truth.filter((x) => !x).length;
+  if (!hasTests) { tEl.innerHTML = `<span class="d">(no tests)</span>\n\n<span class="y">Reviewer: “Looks good to me.”</span>\n<span class="g">✓ merged</span>` + (bad ? `\n\n<span class="r">Three weeks later: ${bad === 1 && ver.includes("B") ? "finance reports invoices off by one cent." : "the billing run crashes on an empty invoice."}</span>` : `\n\n<span class="d">This time nothing went wrong. Nobody knows that for sure.</span>`); verdict.textContent = bad ? "Shipped a defect nobody saw." : "Merged on trust."; verdict.style.color = bad ? C.red : C.yellow; ro.set("Without tests", bad ? "The reviewer could not have known" : "Right, by luck", "A person reading plausible code catches style problems, not a one-cent rounding difference. When AI writes most of the code, <b>reading is not a control</b>. There is too much of it and it all looks reasonable."); return; }
+  tEl.innerHTML = "";
+  for (const [i, [n]] of TESTS.entries()) { await wait(260); const ok = truth[i]; if (!ok) fails++; h("div", { html: `<span class="${ok ? "g" : "r"}">${ok ? "✓" : "✗"} ${n}</span>` }, tEl); }
+  verdict.textContent = fails ? `${fails} failed. The change is rejected automatically, and the agent is told exactly why.` : "5 passed. Safe to accept, without having to trust the author."; verdict.style.color = fails ? C.red : C.green;
+  ro.set(fails ? "Caught" : "Accepted with evidence", fails ? "The test knew what the reviewer could not see" : "Proof, not opinion", fails ? "The failing test is also the agent's feedback: it can try again against a precise target. This is the loop that makes agentic coding workable: <b>generate, check deterministically, refine</b>." : "The tests state what “correct” means. Any author, human or AI, can now change this function, and the same proof is produced every time.");
+}
+// ---- evals ----
+h("div", { class: "eyebrow", style: "margin:18px 0 8px", text: "Evals: tests for output that is never the same twice" }, stage);
+const eb = h("div", { class: "bar" }, stage); let pv = "v1";
+seg(eb, [["v1", "Prompt v1"], ["v2", "Prompt v2: adds “cite the clause, never invent one”"]], "v1", (v) => (pv = v));
+h("button", { class: "btn primary", text: "Run 40 times", on: { click: runEval } }, eb);
+const ev = svg(stage, 1000, 120), evG = s("g", {}, ev), evT = h("p", { style: "font-weight:700;margin:4px" }, stage);
+// a stand-in "model": produces a summary line whose flaws depend on the prompt version; the checks below are real
+const gen = () => { const r = Math.random(), miss = pv === "v1" ? 0.14 : 0.03, inv = pv === "v1" ? 0.1 : 0.02; return { text: "Termination: 12 months' notice after year 3" + (r < miss ? "" : " [§14.2]") + (r > 1 - inv ? " [§99.9]" : ""), }; };
+const CHECKS = [["cites a clause", (o) => /\[§\d+\.\d+\]/.test(o.text)], ["cited clause exists in the contract", (o) => !/§99/.test(o.text)], ["under 20 words", (o) => o.text.split(/\s+/).length < 20]];
+async function runEval() { evG.innerHTML = ""; let pass = 0; const N = 40; for (let i = 0; i < N; i++) { const o = gen(), ok = CHECKS.every(([, c]) => c(o)); if (ok) pass++; s("circle", { cx: 34 + (i % 20) * 49, cy: 34 + Math.floor(i / 20) * 50, r: 16, fill: ok ? C.green : C.red, opacity: 0.9 }, evG); if (i % 4 === 3) await wait(60); } const rate = pass / N, gate = rate >= 0.9; evT.textContent = `${pass} of ${N} passed all three checks (${Math.round(rate * 100)}%). Release gate at 90%: ${gate ? "open" : "closed"}.`; evT.style.color = gate ? C.green : C.red; }
+const ro = readout(side), pyr = card(side, "The test stack for AI systems");
+pyr.body.innerHTML = `<table class="t"><tr><th>Layer</th><th>Checks</th><th>Runs</th></tr><tr><td><b>Unit tests</b></td><td>One function does what it should</td><td>Every change, seconds</td></tr><tr><td><b>Integration tests</b></td><td>The parts work together</td><td>Every change, minutes</td></tr><tr><td><b>Evals</b></td><td>AI output meets criteria often enough</td><td>Every prompt or model change</td></tr><tr><td><b>Guardrail & red-team tests</b></td><td>It refuses what it must refuse</td><td>Before release, and continuously</td></tr><tr><td><b>Human review</b></td><td>What only judgement can decide</td><td>At the gates that matter</td></tr></table>`;
+const why = card(side, "Why this matters more with AI");
+why.body.innerHTML = "<ul><li>AI produces code faster than people can read it. Tests are the only review that scales.</li><li>A test is a requirement a machine can check. That makes it the agent's target as well as its judge.</li><li>For generated text there is no single right answer, so we test a <b>pass rate against criteria</b> and gate on it.</li></ul>";
+show();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="17-before-after">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Before / after operating model: one scene that morphs. Every element has a "before" and an "after" state. ----
+const sv = svg(stage, 1000, 600), L = s("g", {}, sv);
+const ROLES = ["Business", "Analyst", "Architect", "Engineer", "QA", "Risk", "Ops"];
+const CYC = ["Intent", "Specify", "Build", "Verify", "Run"];
+// steps: before = 7 role boxes in a staircase with gaps; after = 5 cycles in a line (two merge away)
+const steps = ROLES.map((r, i) => { const ai = [0, 1, 1, 2, 3, 3, 4][i], keep = [0, 1, 3, 4, 6].includes(i); return { b: { x: 90 + i * 137, y: 150 + (i % 2) * 46, o: 1 }, a: { x: 140 + ai * 180, y: 200, o: keep ? 1 : 0 }, bt: r, at: CYC[ai] }; });
+steps.forEach((p) => { p.g = s("g", {}, L); p.r = s("rect", { x: -58, y: -30, width: 116, height: 60, rx: 14, fill: "rgba(20,12,45,.9)", "stroke-width": 2.5 }, p.g); p.tb = text(p.g, 0, 6, p.bt, { size: 15, weight: 700 }); p.ta = text(p.g, 0, 6, p.at, { size: 16, weight: 700 }); });
+// handoff arrows (before) / flow line (after)
+const hand = steps.slice(1).map((_, i) => s("path", { fill: "none", stroke: C.red, "stroke-width": 2.5, "stroke-dasharray": "5 5" }, L));
+const flow = s("path", { d: "M70 200 H930", fill: "none", stroke: C.green, "stroke-width": 4, "stroke-linecap": "round" }, L); L.insertBefore(flow, L.firstChild);
+// documents (before: scattered, rotated, stale names) → artefacts (after: aligned, stamped)
+const DOCS = [["requirements_v3_FINAL.docx", "spec"], ["architecture (old).pptx", "model"], ["test plan copy.xlsx", "tests"], ["risk log – draft.docx", "attestations"], ["runbook_2023.docx", "runtime policy"]];
+const docs = DOCS.map(([bn, an], i) => { const g = s("g", {}, L), r = s("rect", { x: -62, y: -22, width: 124, height: 44, rx: 6, "stroke-width": 2 }, g), tb = text(g, 0, 5, bn, { size: 9.5, weight: 500, fill: "#e8d9c4" }), ta = text(g, 0, 5, an, { size: 13.5, weight: 700 }), stamp = s("g", {}, g); s("circle", { cx: 54, cy: -18, r: 11, fill: C.green }, stamp); text(stamp, 54, -13.5, "✓", { size: 13, weight: 700, fill: "#06281c" }); return { g, r, tb, ta, stamp, b: { x: 130 + i * 185, y: 330 + [20, -18, 34, -6, 26][i], rot: [-9, 6, -4, 11, -7][i] }, a: { x: 140 + i * 180, y: 320, rot: 0 }, ph: i * 1.7 }; });
+// gates: three manual gates → automated checks; two stay as human decisions
+const GATES = [["Design review board", "auto", 1], ["Security review", "auto", 3], ["Change advisory board", "auto", 4], ["Sign-off meeting", "human", 0], ["Risk committee", "human", 3]];
+const gates = GATES.map(([bn, kind, at], i) => { const g = s("g", {}, L), d = s("path", { "stroke-width": 2.5 }, g), tb = text(g, 0, 34, bn, { size: 10.5, weight: 500, fill: C.orange, max: 14 }), ta = text(g, 0, 34, kind === "auto" ? "automated gate" : "human decision", { size: 11, weight: 700, fill: kind === "auto" ? C.green : C.yellow }); return { g, d, tb, ta, kind, b: { x: 158 + [1, 4, 5, 0, 3][i] * 137, y: 82 + (i % 2) * 14 }, a: { x: kind === "auto" ? 230 + at * 180 : 140 + at * 180, y: kind === "auto" ? 200 : 100 } }; });
+// people (before: one per role) → cluster at the two decisions; agents appear on every cycle
+const ppl = ROLES.map((_, i) => { const g = s("g", {}, L); s("circle", { cx: 0, cy: -9, r: 7, fill: C.blue }, g); s("path", { d: "M-11 10 a11 11 0 0 1 22 0 z", fill: C.blue }, g); return { g, b: { x: 90 + i * 137, y: 110 + (i % 2) * 46 }, a: { x: (i < 4 ? 140 : 680) + ((i % 4) - 1.5) * 24 + (i >= 4 ? 12 : 0), y: 58 } }; });
+const agents = CYC.map((_, i) => { const g = s("g", {}, L); s("rect", { x: -11, y: -11, width: 22, height: 22, rx: 6, fill: C.magenta }, g); text(g, 0, 4.5, "AI", { size: 9.5, weight: 700, fill: "#fff" }); return { g, x: 140 + i * 180, y: 250 }; });
+// evidence ribbon (after)
+const led = s("g", {}, L); s("rect", { x: 60, y: 400, width: 880, height: 56, rx: 16, fill: hexA(C.green, 0.1), stroke: C.green, "stroke-width": 1.5 }, led); text(led, 500, 434, "One evidence record: every artefact version, the laws it was checked against, and who decided what", { size: 14, weight: 500, fill: C.green });
+const capB = text(sv, 500, 520, "Today: work moves between people. Documents describe what was intended, not what is true.", { size: 16, weight: 500, max: 120 }), capA = text(sv, 500, 520, "Governed: work moves through cycles. Artefacts carry their own proof, and people decide where it matters.", { size: 16, weight: 500, max: 120 });
+const headB = text(sv, 500, 584, "The team is the unit", { size: 26, weight: 700, fill: C.orange }), headA = text(sv, 500, 584, "The flow is the unit", { size: 26, weight: 700, fill: C.green });
+const mix = (a, b, k) => "#" + [0, 2, 4].map((i) => Math.round(lerp(parseInt(a.slice(1 + i, 3 + i), 16), parseInt(b.slice(1 + i, 3 + i), 16), k)).toString(16).padStart(2, "0")).join("");
+let k = 0, t0 = performance.now();
+function draw(now = performance.now()) {
+  const tt = (now - t0) / 1000, e = ease(k), drift = 1 - e;
+  steps.forEach((p) => { const x = lerp(p.b.x, p.a.x, e), y = lerp(p.b.y, p.a.y, e), o = lerp(p.b.o, p.a.o, e); p.g.setAttribute("transform", `translate(${x} ${y})`); p.g.style.opacity = o; p.r.setAttribute("stroke", mix(C.blue, C.green, e)); p.tb.style.opacity = 1 - e * 2; p.ta.style.opacity = e * 2 - 1; p.x = x; p.y = y; });
+  hand.forEach((h_, i) => { const a = steps[i], b = steps[i + 1]; h_.setAttribute("d", `M${a.x + 58} ${a.y} L${b.x - 58} ${b.y}`); h_.style.opacity = Math.max(0, 1 - e * 2.2); });
+  flow.style.opacity = Math.max(0, e * 2 - 1);
+  docs.forEach((d) => { const wob = drift * 7; const x = lerp(d.b.x, d.a.x, e) + Math.sin(tt * 0.7 + d.ph) * wob, y = lerp(d.b.y, d.a.y, e) + Math.cos(tt * 0.5 + d.ph) * wob, rot = lerp(d.b.rot, 0, e) + Math.sin(tt * 0.6 + d.ph) * drift * 3; d.g.setAttribute("transform", `translate(${x} ${y}) rotate(${rot})`); d.r.setAttribute("fill", mix("#4a3a2a", "#140c2d", e)); d.r.setAttribute("stroke", mix("#b08a5a", C.green, e)); d.tb.style.opacity = 1 - e * 2; d.ta.style.opacity = e * 2 - 1; d.stamp.style.opacity = Math.max(0, e * 3 - 2); });
+  gates.forEach((q) => { const x = lerp(q.b.x, q.a.x, e), y = lerp(q.b.y, q.a.y, e), sz = lerp(17, q.kind === "auto" ? 11 : 16, e); q.g.setAttribute("transform", `translate(${x} ${y})`); q.d.setAttribute("d", `M0 ${-sz} L${sz} 0 L0 ${sz} L${-sz} 0 z`); const col = mix(C.orange, q.kind === "auto" ? C.green : C.yellow, e); q.d.setAttribute("fill", hexA(col, 0.35)); q.d.setAttribute("stroke", col); q.tb.style.opacity = 1 - e * 2; q.ta.style.opacity = e * 2 - 1; });
+  ppl.forEach((p) => p.g.setAttribute("transform", `translate(${lerp(p.b.x, p.a.x, e)} ${lerp(p.b.y, p.a.y, e)})`));
+  agents.forEach((a) => { a.g.setAttribute("transform", `translate(${a.x} ${a.y})`); a.g.style.opacity = Math.max(0, e * 2.5 - 1.5); });
+  led.style.opacity = Math.max(0, e * 2.5 - 1.5);
+  capB.style.opacity = headB.style.opacity = 1 - e * 2; capA.style.opacity = headA.style.opacity = e * 2 - 1;
+}
+(function loop(now) { draw(now); requestAnimationFrame(loop); })(t0);
+const bar = h("div", { class: "bar", style: "margin:6px 4px 0" }, stage), slw = h("div", { style: "flex:1;min-width:260px" }, bar);
+const sl = slider(slw, { label: "Morph", min: 0, max: 100, value: 0, fmt: (v) => (v < 15 ? "Today" : v > 85 ? "Governed" : "in transition") }, (v) => { k = v / 100; upd(); });
+h("button", { class: "btn primary", text: "Play", on: { click: async () => { const from = k > 0.5 ? 1 : 0, to = 1 - from; await tween(2600, (q) => { k = lerp(from, to, q); sl.set(Math.round(k * 100)); upd(); }, (q) => q); } } }, bar);
+const K = kpis(side, [["hand", "Handoffs between people"], ["mg", "Manual gates"], ["ag", "Automated gates"], ["hd", "Human decisions"], ["doc", "Drifting documents"], ["lead", "Idea to production"]]);
+const ro = readout(side), what = card(side, "Three things morph");
+what.body.innerHTML = "<ul><li><b>Documents become computable artefacts.</b> A spec or an architecture model that is versioned and machine-checked cannot quietly drift.</li><li><b>Manual gates become automated gates.</b> A rule that can be written down is checked every time, in seconds, with a record.</li><li><b>People move to the critical decisions.</b> Fewer meetings to approve routine work; real attention on intent and on exceptions.</li></ul>";
+function upd() {
+  const e = ease(k), r = (a, b) => Math.round(lerp(a, b, e));
+  K.hand(r(6, 1), e > 0.6 ? C.green : C.red); K.mg(r(5, 0), e > 0.6 ? C.green : C.red); K.ag(r(0, 3), e > 0.4 ? C.green : null); K.hd(r(0, 2), e > 0.4 ? C.yellow : null, "intent and exceptions"); K.doc(r(5, 0), e > 0.6 ? C.green : C.red); K.lead(e < 0.3 ? "months" : e < 0.75 ? "weeks" : "days", null, "illustrative");
+  ro.set(k < 0.15 ? "Today" : k > 0.85 ? "Governed" : "In transition", k < 0.15 ? "Handoffs, manual gates, drifting documents" : k > 0.85 ? "Computable artefacts, automated gates, people at the decisions" : "The same work, reorganised around flows", k < 0.15 ? "Seven roles pass work along. Five gates are meetings. Five documents each tell a slightly different story, and none is the system. Scaling the product means scaling the team." : k > 0.85 ? "Five cycles, each with agents doing the work and automated gates checking it. People appear twice: to approve the intent and to decide the exceptions. The evidence is produced as a by-product, not reconstructed for the audit." : "Nothing is removed for its own sake. Each gate that can be expressed as a rule becomes a check; each document that matters becomes an artefact with an owner and a version.");
+}
+upd();
+
+</script>
+</body>
+</html>

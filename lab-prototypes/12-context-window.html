@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="12-context-window">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Context window: everything must fit. Play a conversation, add documents and tools, and choose what happens when it fills. ----
+const SEG = { system: ["System prompt", C.blue], tools: ["Tool definitions", C.green], memory: ["Memory", C.purple], docs: ["Documents", C.cyan], history: ["Conversation history", C.grey], input: ["Your message", C.yellow], output: ["Room for the answer", C.magenta] };
+let cap = 32000, strat = "truncate", st;
+const fresh = () => ({ system: 1200, tools: 0, memory: 0, docs: 0, input: 0, output: 2000, turns: [], summary: 0, turn: 0, dropped: 0, mem: false });
+const bar = h("div", { class: "bar" }, stage);
+seg(bar, [[8000, "8k window"], [32000, "32k"], [200000, "200k"], [1000000, "1M"]], 32000, (v) => { cap = +v; draw(); });
+const sv = svg(stage, 1000, 300), g = s("g", {}, sv);
+const b2 = h("div", { class: "bar", style: "margin-top:6px" }, stage);
+h("button", { class: "btn primary", text: "Send a message", on: { click: () => send() } }, b2);
+h("button", { class: "btn", text: "+ Attach a 20-page document", on: { click: () => { st.docs += 9000; fit(); draw(); } } }, b2);
+h("button", { class: "btn", text: "+ Connect a tool server", on: { click: () => { st.tools += 2500; fit(); draw(); } } }, b2);
+h("button", { class: "btn", text: "Start over", on: { click: () => { st = fresh(); draw(); } } }, b2);
+const b3 = h("div", { class: "bar" }, stage); h("span", { class: "hint", text: "When the window is full:" }, b3);
+seg(b3, [["truncate", "Drop the oldest turns"], ["compact", "Summarise the history"], ["memory", "Summarise + save key facts to memory"]], "truncate", (v) => { strat = v; });
+const logEl = h("div", { class: "code mono", style: "max-height:170px;overflow:auto;font-size:12.5px" }, stage);
+const K = kpis(side, [["used", "Window used"], ["cost", "Input sent this turn"], ["fact", "Still knows turn 1?"], ["turn", "Turns"]]);
+const ro = readout(side), cc = card(side, "Input, output and memory");
+cc.body.innerHTML = "<ul><li><b>Input</b> is everything sent: you pay for all of it on every turn, not just your new message.</li><li><b>Output</b> shares the same window, and each answer becomes input on the next turn.</li><li>The model itself remembers <b>nothing</b>. Continuity is the history being resent.</li><li><b>Memory</b> is a file the harness writes and reloads. It survives a full window and a new session.</li></ul>";
+const used = () => st.system + st.tools + st.memory + st.docs + st.summary + st.turns.reduce((a, t) => a + t.tok, 0) + st.input;
+const log = (m, c = "d") => { h("div", { html: `<span class="${c}">${m}</span>` }, logEl); logEl.scrollTop = 1e6; };
+function fit() {
+  let guard = 0;
+  while (used() + st.output > cap && guard++ < 200) {
+    if (strat === "truncate") { if (!st.turns.length) break; const t = st.turns.shift(); st.dropped++; log(`window full → dropped turn ${t.n} (${t.tok.toLocaleString()} tokens)${t.n === 1 ? "  ← the policy number was in here" : ""}`, "r"); }
+    else { const tot = st.turns.reduce((a, t) => a + t.tok, 0); if (tot < 400) break; const keep1 = st.turns.some((t) => t.n === 1) || st.keptFact; if (strat === "memory" && !st.mem) { st.mem = true; st.memory += 300; log("saved to memory: “Customer policy number: NL-4471-88. Claim: burst pipe, 12 March.”", "p"); }
+      st.summary += Math.round(tot * 0.12); st.keptFact = strat === "memory" ? true : keep1 && Math.random() < 0.55; st.turns = []; log(`window full → history compacted to a summary (${Math.round(tot * 0.12).toLocaleString()} tokens)${strat === "compact" ? (st.keptFact ? ", policy number kept" : ", policy number lost in the summary") : ""}`, strat === "compact" && !st.keptFact ? "o" : "g"); }
+  }
+  if (used() + st.output > cap) log("still does not fit: the fixed parts alone exceed this window. Use a larger window or attach less.", "r");
+}
+function knows() { return st.turns.some((t) => t.n === 1) || st.mem || (st.summary > 0 && st.keptFact) ? true : st.turn === 0 ? null : false; }
+function send() {
+  st.turn++; st.input = st.turn === 1 ? 120 : 60 + Math.round(Math.random() * 120); fit();
+  const sent = used(); log(`turn ${st.turn}: sent ${sent.toLocaleString()} tokens in, got ~${(600 + st.turn * 40).toLocaleString()} out${st.turn === 1 ? "  (you gave your policy number here)" : ""}`, "c");
+  st.turns.push({ n: st.turn, tok: st.input + 600 + st.turn * 40 + (st.tools ? 900 : 0) }); st.lastSent = sent; st.input = 0; fit(); draw();
+}
+function draw() {
+  g.innerHTML = ""; const x0 = 20, w = 960, y = 70, hh = 84, tot = used(), sc = (v) => (v / cap) * w;
+  text(g, x0, 44, `One context window: ${cap.toLocaleString()} tokens (roughly ${Math.round((cap * 0.75) / 500).toLocaleString()} pages)`, { size: 15, weight: 700, anchor: "start" });
+  s("rect", { x: x0, y, width: w, height: hh, rx: 16, fill: "rgba(255,255,255,.05)", stroke: "rgba(255,255,255,.3)", "stroke-width": 2 }, g);
+  let x = x0; const parts = [["system", st.system], ["tools", st.tools], ["memory", st.memory], ["docs", st.docs], ["history", st.summary + st.turns.reduce((a, t) => a + t.tok, 0)], ["input", st.input]];
+  for (const [k, v] of parts) { if (!v) continue; const ww = Math.min(sc(v), x0 + w - x); if (ww <= 0) break; s("rect", { x, y: y + 4, width: Math.max(1.5, ww - 1.5), height: hh - 8, rx: 6, fill: hexA(SEG[k][1], 0.75) }, g); if (ww > 70) text(g, x + ww / 2, y + hh / 2 + 5, SEG[k][0], { size: 12, weight: 700, fill: "#0b0718", max: Math.floor(ww / 8) }); x += ww; }
+  const ox = x0 + w - sc(st.output); s("rect", { x: Math.max(x0, ox), y: y + 4, width: Math.min(w, sc(st.output)) - 2, height: hh - 8, rx: 6, fill: "none", stroke: C.magenta, "stroke-width": 2, "stroke-dasharray": "5 5" }, g);
+  if (sc(st.output) > 60) text(g, ox + sc(st.output) / 2, y + hh + 22, "reserved for the answer", { size: 11.5, fill: C.magenta, weight: 500 });
+  // turns strip
+  text(g, x0, 218, "Turns still inside the window", { size: 12, weight: 700, anchor: "start", fill: C.yellow, "letter-spacing": 1.5 });
+  for (let n = 1; n <= st.turn; n++) { const inWin = st.turns.some((t) => t.n === n), xx = x0 + ((n - 1) % 38) * 25; s("rect", { x: xx, y: 232, width: 21, height: 30, rx: 6, fill: inWin ? hexA(C.grey, 0.7) : "rgba(255,255,255,.05)", stroke: n === 1 ? C.yellow : "rgba(255,255,255,.25)", "stroke-width": n === 1 ? 2.5 : 1 }, g); text(g, xx + 10.5, 252, n, { size: 10.5, fill: inWin ? "#0b0718" : "rgba(255,255,255,.35)", weight: 700 }); }
+  if (st.summary) text(g, x0, 288, `+ a summary of earlier turns (${st.summary.toLocaleString()} tokens)`, { size: 12, anchor: "start", fill: "rgba(255,255,255,.6)", weight: 400 });
+  const pct = (tot + st.output) / cap, kn = knows();
+  K.used(`${Math.min(999, Math.round(pct * 100))}%`, pct > 1 ? C.red : pct > 0.8 ? C.yellow : C.green); K.cost((st.lastSent || 0).toLocaleString(), null, "tokens, resent every turn"); K.fact(kn === null ? "–" : kn ? "Yes" : "No", kn === false ? C.red : C.green, st.mem ? "from memory" : kn ? "in the window" : kn === false ? "it fell out" : ""); K.turn(st.turn);
+  ro.set("What just happened", kn === false ? "The model has forgotten your policy number" : st.mem ? "The fact outlived the window" : pct > 0.8 ? "The window is nearly full" : "Everything still fits", kn === false ? "Turn 1 is no longer in the window, so as far as the model is concerned it never happened. It will ask again, or worse, guess. Nothing warned the user." : st.mem ? "The harness saved the key facts to a memory file before compacting. They are reloaded on every turn, and will be there next week too." : "Each new turn resends the whole history. Long conversations cost more and eventually push the earliest content out. Attach a document or keep sending messages to see it happen.");
+}
+st = fresh(); draw(); log("ready. Send a message: turn 1 contains the customer's policy number.");
+
+</script>
+</body>
+</html>

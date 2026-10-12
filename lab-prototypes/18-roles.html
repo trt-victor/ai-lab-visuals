@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="18-roles">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Where roles move: time per kind of work, before → after, for five roles. Slider = how far adoption has gone. ----
+const CAT = { mech: ["Mechanical work", C.grey], coord: ["Coordination & chasing", C.orange], judge: ["Judgement & decisions", C.yellow], design: ["Designing the rules & the system", C.green] };
+const ROLES = [
+  { t: "Business owner", b: [10, 45, 40, 5], a: [3, 12, 55, 30], stop: ["Chasing status across teams", "Re-explaining requirements at every handoff", "Signing off documents nobody has read end to end"], more: ["Stating intent precisely, once", "Deciding trade-offs with evidence in front of them"], fresh: ["Owning the acceptance criteria as an artefact", "Approving intent at the first gate"] },
+  { t: "Architect", b: [20, 35, 35, 10], a: [5, 10, 40, 45], stop: ["Drawing diagrams that are out of date on arrival", "Sitting on review boards for routine changes"], more: ["The few decisions that are expensive to reverse", "Working with teams on real trade-offs"], fresh: ["Maintaining the architecture as a checked model", "Writing architecture rules as laws the platform enforces"] },
+  { t: "Risk & compliance", b: [35, 35, 25, 5], a: [5, 10, 40, 45], stop: ["Sampling after the fact", "Collecting evidence by email before an audit", "Reviewing every change by hand"], more: ["Judging genuine exceptions", "Looking at where the rules cause friction"], fresh: ["Writing controls as testable laws", "Owning the exit contracts", "Reading the friction ledger"] },
+  { t: "Engineer", b: [50, 25, 20, 5], a: [10, 10, 45, 35], stop: ["Boilerplate and glue code", "Updating documentation by hand", "Waiting for reviews and environments"], more: ["Reviewing and steering what agents produce", "Design and hard debugging"], fresh: ["Operating flows instead of maintaining a product by hand", "Building skills, tools and checks for agents"] },
+  { t: "QA & test", b: [55, 20, 20, 5], a: [8, 7, 40, 45], stop: ["Running manual regression packs", "Writing test scripts line by line", "Gatekeeping at the end"], more: ["Exploratory testing of what is new or risky", "Deciding what “good enough” means"], fresh: ["Designing evaluations for AI output", "Owning the quality laws and golden data sets"] },
+];
+let k = 0.6, cur = 3;
+const sv = svg(stage, 1000, 560), x0 = 190, bw = 760, rows = [];
+text(sv, x0, 30, "SHARE OF TIME", { size: 12, weight: 700, fill: C.yellow, anchor: "start", "letter-spacing": 2 });
+ROLES.forEach((r, i) => { const y = 60 + i * 96, g = s("g", { style: "cursor:pointer" }, sv); const bg = s("rect", { x: 8, y: y - 8, width: 984, height: 86, rx: 16, fill: "rgba(255,255,255,.03)", stroke: "rgba(255,255,255,.12)" }, g); text(g, 26, y + 40, r.t, { size: 16, weight: 700, anchor: "start", max: 14 }); text(g, x0 - 12, y + 18, "today", { size: 10.5, anchor: "end", fill: "rgba(255,255,255,.5)", weight: 400 }); text(g, x0 - 12, y + 56, "then", { size: 10.5, anchor: "end", fill: "rgba(255,255,255,.5)", weight: 400 });
+  const mk = (yy, hh, op) => Object.keys(CAT).map((c) => s("rect", { y: yy, height: hh, rx: 5, fill: CAT[c][1], opacity: op }, g)); const before = mk(y + 6, 18, 0.45), now = mk(y + 34, 34, 1), lab = Object.keys(CAT).map(() => text(g, 0, y + 56, "", { size: 12.5, weight: 700, fill: "#0b0718" }));
+  g.addEventListener("click", () => { cur = i; draw(); }); rows.push({ bg, before, now, lab }); });
+const slw = h("div", { style: "margin:8px 4px 0" }, stage);
+slider(slw, { label: "How far the operating model has moved", min: 0, max: 100, value: 60, fmt: (v) => (v < 10 ? "today" : v > 90 ? "fully governed" : `${v}%`) }, (v) => { k = v / 100; draw(); });
+const lgw = h("div", { style: "margin:10px 4px 0" }, stage); legend(lgw, Object.values(CAT));
+const K = kpis(side, [["m", "Mechanical + chasing"], ["j", "Judgement + design"]]);
+const ro = readout(side), lists = h("div", { class: "side" }, side);
+function draw() {
+  ROLES.forEach((r, i) => { const R = rows[i]; R.bg.setAttribute("stroke", i === cur ? C.yellow : "rgba(255,255,255,.12)"); R.bg.setAttribute("stroke-width", i === cur ? 2.5 : 1); let xb = x0, xn = x0;
+    r.b.forEach((v, c) => { const wb = (v / 100) * bw; R.before[c].setAttribute("x", xb); R.before[c].setAttribute("width", Math.max(0, wb - 2)); xb += wb; const val = lerp(v, r.a[c], k), wn = (val / 100) * bw; R.now[c].setAttribute("x", xn); R.now[c].setAttribute("width", Math.max(0, wn - 2)); R.lab[c].setAttribute("x", xn + wn / 2); R.lab[c].textContent = wn > 44 ? `${Math.round(val)}%` : ""; xn += wn; }); });
+  const r = ROLES[cur], val = r.b.map((v, c) => lerp(v, r.a[c], k)), m = val[0] + val[1], j = val[2] + val[3];
+  K.m(`${Math.round(m)}%`, m > 50 ? C.red : C.green, `was ${r.b[0] + r.b[1]}%`); K.j(`${Math.round(j)}%`, j > 50 ? C.green : C.yellow, `was ${r.b[2] + r.b[3]}%`);
+  ro.set("Role", r.t, `The role does not shrink. Its centre of gravity moves from <b>doing and chasing</b> to <b>deciding and designing the rules</b>. Tap another row to compare.`);
+  lists.innerHTML = ""; const li = (t, c, arr) => { const cc = card(lists, t); cc.style.borderLeft = `3px solid ${c}`; cc.body.innerHTML = `<ul>${arr.map((x) => `<li>${x}</li>`).join("")}</ul>`; };
+  li("Stops doing", C.grey, r.stop); li("Does more of", C.yellow, r.more); li("New in the role", C.green, r.fresh);
+}
+draw();
+
+</script>
+</body>
+</html>

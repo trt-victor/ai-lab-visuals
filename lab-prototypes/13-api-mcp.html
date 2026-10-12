@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="13-api-mcp">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- API & MCP: N×M custom integrations versus N+M with a common protocol, plus one tool call step by step ----
+const APPS = ["Chat assistant", "Coding agent", "Service agent", "Analyst agent", "Workflow agent"], SYS = ["CRM", "ERP", "Documents", "Database", "Email", "Ticketing"];
+let n = 3, m = 4, mode = "custom";
+const bar = h("div", { class: "bar" }, stage);
+seg(bar, [["custom", "Custom integrations"], ["mcp", "With MCP"]], "custom", (v) => { mode = v; draw(); });
+const sv = svg(stage, 1000, 380), g = s("g", {}, sv);
+const sl = h("div", { class: "grid2", style: "margin:0 4px 12px" }, stage);
+slider(sl, { label: "AI applications", min: 1, max: 5, value: n }, (v) => { n = v; draw(); }); slider(sl, { label: "Systems to connect", min: 1, max: 6, value: m }, (v) => { m = v; draw(); });
+function draw() {
+  g.innerHTML = ""; const ay = (i) => 190 + (i - (n - 1) / 2) * 62, sy = (j) => 190 + (j - (m - 1) / 2) * 56;
+  const A = APPS.slice(0, n).map((t, i) => node(g, { x: 150, y: ay(i), w: 190, h: 48, label: t, color: C.magenta, size: 15 })), S = SYS.slice(0, m).map((t, j) => node(g, { x: 850, y: sy(j), w: 170, h: 44, label: t, color: C.cyan, size: 15 }));
+  if (mode === "custom") { A.forEach((a) => S.forEach((b) => link(g, a, b, { color: hexA(C.red, 0.7), width: 1.6, arrow: false }))); text(g, 500, 34, `${n} × ${m} = ${n * m} bespoke connectors, each built, secured and maintained separately`, { size: 15, weight: 700, fill: C.red }); }
+  else { const hub = node(g, { x: 500, y: 190, w: 190, h: 120, label: "MCP", sub: "one protocol", color: C.yellow, size: 30, subSize: 13 });
+    A.forEach((a) => { link(g, a, hub, { color: C.yellow, width: 2, arrow: false }); text(g, 262, a.cy - 8, "client", { size: 10.5, fill: "rgba(255,255,255,.55)", weight: 400, anchor: "start" }); });
+    S.forEach((b) => { link(g, hub, b, { color: C.yellow, width: 2, arrow: false }); text(g, 752, b.cy - 8, "server", { size: 10.5, fill: "rgba(255,255,255,.55)", weight: 400, anchor: "end" }); });
+    text(g, 500, 34, `${n} + ${m} = ${n + m} pieces: one client per application, one server per system`, { size: 15, weight: 700, fill: C.green }); }
+  K.c(n * m, C.red); K.p(n + m, C.green); K.s(n * m > n + m ? `${Math.round((1 - (n + m) / (n * m)) * 100)}%` : "0%", C.yellow, "fewer things to build");
+}
+// one call, step by step
+h("div", { class: "eyebrow", style: "margin:6px 4px 8px", text: "One tool call, step by step" }, stage);
+const LANES = ["User", "AI application", "Model", "MCP server", "System API"], q = svg(stage, 1000, 300), LX = (i) => 100 + i * 200;
+LANES.forEach((l, i) => { s("line", { x1: LX(i), y1: 44, x2: LX(i), y2: 290, stroke: "rgba(255,255,255,.18)", "stroke-dasharray": "4 6" }, q); node(q, { x: LX(i), y: 24, w: 160, h: 36, label: l, size: 13.5, color: [C.yellow, C.magenta, C.purple, C.green, C.cyan][i] }); });
+const SEQ = [[0, 1, "“What is the status of order 8841?”", "The user asks in plain language."], [3, 1, "tools: get_order, list_invoices …", "On connecting, the server tells the application which tools it offers and how to call them. Nobody hand-codes this."], [1, 2, "question + tool descriptions", "The application sends the question and the tool list to the model."], [2, 1, "call get_order(id=8841)", "The model does not call anything. It asks for a tool by name with arguments."], [1, 3, "get_order(8841)", "The application checks permissions, then forwards the request over MCP."], [3, 4, "GET /orders/8841", "The server translates it into the system's ordinary API call. MCP wraps APIs; it does not replace them."], [4, 3, "{status: shipped}", "The system answers as it always has."], [3, 1, "result", "The result returns to the application."], [1, 2, "result added to context", "The model sees the result on its next turn."], [2, 0, "“Order 8841 shipped on Tuesday.”", "A grounded answer, with a record of every step."]];
+const seqG = s("g", {}, q), b2 = h("div", { class: "bar", style: "margin-top:4px" }, stage); let si = 0;
+h("button", { class: "btn primary", text: "Next step ›", on: { click: stepSeq } }, b2); h("button", { class: "btn", text: "Restart", on: { click: () => { si = 0; seqG.innerHTML = ""; cap.textContent = ""; } } }, b2); const cap = h("span", { style: "font-size:14px;color:var(--muted)" }, b2);
+function stepSeq() { if (si >= SEQ.length) return; const [a, b, label, note] = SEQ[si], y = 66 + si * 23, col = b > a ? C.yellow : C.cyan; const p = edge(seqG, [LX(a), y], [LX(b), y], { color: col, width: 2.2 }); text(seqG, (LX(a) + LX(b)) / 2, y - 5, label, { size: 11.5, weight: 500, stroke: "#0b0718", "stroke-width": 3.5, "paint-order": "stroke" }); token(seqG, p, { color: col, ms: 500 }); cap.textContent = `${si + 1}/${SEQ.length} · ${note}`; si++; }
+const K = kpis(side, [["c", "Custom connectors"], ["p", "With MCP"], ["s", "Saving"]]);
+const d = card(side, "API and MCP are not rivals");
+d.body.innerHTML = "<ul><li>An <b>API</b> is a contract between two programs. A developer reads the documentation and writes code against it.</li><li><b>MCP</b> (Model Context Protocol) is a standard way to describe tools, data and prompts <b>to an AI application</b>, so the model can discover and use them at run time.</li><li>An MCP server is usually a thin layer on top of an existing API.</li></ul>";
+const r = card(side, "What to watch");
+r.body.innerHTML = "<ul><li>Every connected server adds tool descriptions to the context window, and adds to what the agent is able to do.</li><li>Treat a server like any integration: who runs it, what can it reach, what does it log?</li><li>Tool descriptions are text the model trusts. A malicious server can use them to steer it.</li></ul>";
+draw(); stepSeq();
+
+</script>
+</body>
+</html>

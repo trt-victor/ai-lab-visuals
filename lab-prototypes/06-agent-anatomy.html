@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="06-agent-anatomy">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Anatomy of an agent, with one request traced through instructions, memory, skills, knowledge and tools ----
+const P = {
+  agent: { t: "Agent", sub: "model + harness", c: C.yellow, x: 500, y: 320, d: "The model in its loop. It decides what to look at and what to do next. Everything else on this board is something it can draw on." },
+  instr: { t: "Instructions", sub: "who you are, the rules", c: C.blue, x: 500, y: 90, d: "The standing brief: role, boundaries, tone, what never to do. Loaded on every call. Written by the builder, not the user." },
+  memory: { t: "Memory", sub: "what it has learned", c: C.purple, x: 170, y: 200, d: "<b>Short-term</b> memory is the conversation so far. <b>Long-term</b> memory is notes the agent saves and reloads next time: preferences, decisions, facts about you. It changes as the agent works." },
+  skills: { t: "Skills", sub: "how to do a task", c: C.magenta, x: 170, y: 440, d: "Packaged know-how: a playbook, a template, sometimes a script. Loaded only when the task calls for it, so the agent can hold hundreds without filling its context." },
+  knowledge: { t: "Knowledge", sub: "what is true here", c: C.cyan, x: 830, y: 200, d: "Reference material the agent retrieves when needed: policies, manuals, a knowledge graph. It is looked up, not memorised, so it stays current and can be cited." },
+  tools: { t: "Tools", sub: "what it can do", c: C.green, x: 830, y: 440, d: "Actions on real systems: query the ledger, read a file, send a draft. Each tool has a description, inputs and permissions. Often connected through MCP." },
+  sub: { t: "Sub-agents", sub: "who it can delegate to", c: C.orange, x: 500, y: 560, d: "Other agents with their own instructions, tools and a fresh context. Used to split work, to get an independent check, or to keep a large search out of the main context." },
+};
+const STEPS = [
+  ["instr", "in", "Read the standing brief", "“You are a finance analyst assistant. Never post journal entries. Cite the source of every figure.”"],
+  ["memory", "in", "Recall what it knows about you", "Loaded from long-term memory: “Prefers three bullets per driver. Last quarter’s commentary flagged logistics costs.”"],
+  ["skills", "in", "Load the right skill", "The request matches the skill <b>variance-commentary</b>. Its playbook is loaded: structure, materiality threshold, wording rules."],
+  ["knowledge", "in", "Look up what is true here", "Retrieved: the reporting policy section on materiality (5%), and the chart-of-accounts entry for cost centre 4410."],
+  ["tools", "out", "Act on a real system", "Tool call: <span class='mono'>ledger.query(cost_centre=4410, period='Q3')</span> → actuals 1.84m, budget 1.62m."],
+  ["sub", "out", "Delegate a check", "A reviewer sub-agent recalculates the variance independently and confirms +13.6%."],
+  ["agent", "self", "Reason and draft", "The model combines brief, skill, policy and figures into a three-bullet commentary with sources."],
+  ["tools", "out", "Deliver", "Tool call: <span class='mono'>docs.create_draft(...)</span>. A draft, not a posting: the instructions forbid posting."],
+  ["memory", "out", "Remember for next time", "Saved to memory: “Q3 driver for 4410 was a one-off freight contract. Check whether it recurs in Q4.”"],
+];
+const sv = svg(stage, 1000, 640), N = {}, E = {};
+for (const k in P) if (k !== "agent") { const p = P[k]; E[k] = edge(sv, [P.agent.x, P.agent.y], [p.x, p.y], { color: hexA(p.c, 0.55), arrow: false, dash: "6 7", width: 2 }); }
+for (const k in P) { const p = P[k]; N[k] = node(sv, { x: p.x, y: p.y, w: k === "agent" ? 210 : 200, h: k === "agent" ? 110 : 82, label: p.t, sub: p.sub, color: p.c, size: k === "agent" ? 24 : 19, subSize: 13, on: () => show(k) }); }
+text(sv, 500, 30, "“Prepare the Q3 variance commentary for cost centre 4410.”", { size: 17, weight: 500, fill: "#fff", "font-style": "italic" });
+const bar = h("div", { class: "bar", style: "margin:8px 4px 0" }, stage);
+const playB = h("button", { class: "btn primary", text: "Play the request", on: { click: play } }, bar);
+h("button", { class: "btn", text: "Step ›", on: { click: () => step() } }, bar);
+h("button", { class: "btn", text: "Reset", on: { click: reset } }, bar);
+const prog = h("span", { class: "hint" }, bar);
+const ro = readout(side), logC = card(side, "Trace"), logB = h("ol", { style: "list-style:none;display:flex;flex-direction:column;gap:6px;font-size:13.5px;color:var(--muted)" }, logC.body);
+const tbl = card(side, "Tell them apart");
+tbl.body.innerHTML = `<table class="t"><tr><th></th><th>Question it answers</th><th>Changes when</th></tr><tr><td><b>Instructions</b></td><td>Who am I, what are the rules?</td><td>The builder edits them</td></tr><tr><td><b>Memory</b></td><td>What happened before?</td><td>The agent works</td></tr><tr><td><b>Skills</b></td><td>How do I do this task?</td><td>An expert writes one</td></tr><tr><td><b>Knowledge</b></td><td>What is true here?</td><td>The source changes</td></tr><tr><td><b>Tools</b></td><td>What can I do?</td><td>A system is connected</td></tr></table>`;
+let i = 0, busy = false;
+function show(k) { for (const q in N) N[q].active(q === k ? true : null); const p = P[k]; ro.set(p.sub, p.t, p.d); }
+async function step() {
+  if (busy || i >= STEPS.length) return; busy = true;
+  const [k, dir, title, body] = STEPS[i]; show(k); ro.set(`Step ${i + 1} of ${STEPS.length} · ${P[k].t}`, title, body);
+  if (dir !== "self") await token(sv, E[k], { color: P[k].c, ms: 650, reverse: dir === "in", r: 9 });
+  else await tween(600, (q) => N.agent.rect.setAttribute("stroke-width", 4.5 + Math.sin(q * Math.PI) * 6));
+  h("li", { html: `<b style="color:${P[k].c}">${String(i + 1).padStart(2, "0")} ${P[k].t}</b> · ${title}` }, logB);
+  i++; prog.textContent = `${i} / ${STEPS.length}`; busy = false;
+}
+async function play() { if (i >= STEPS.length) reset(); playB.disabled = true; while (i < STEPS.length) { await step(); await wait(1500); } playB.disabled = false; }
+function reset() { i = 0; logB.innerHTML = ""; prog.textContent = `0 / ${STEPS.length}`; show("agent"); }
+reset();
+
+</script>
+</body>
+</html>

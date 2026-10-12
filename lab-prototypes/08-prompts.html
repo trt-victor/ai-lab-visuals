@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="08-prompts">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Prompts: the stack that is actually sent on one call, and the main prompting patterns ----
+const PARTS = [
+  { id: "system", t: "System prompt", who: "Written by the builder", c: C.blue, tok: 900, d: "Sets the role, rules, tone and boundaries. The user never sees it. It is sent again on every call.", ex: "You are a claims assistant for a Dutch insurer. Answer only from the policy documents provided. If the answer is not there, say so. Never give legal advice." },
+  { id: "tools", t: "Tool definitions", who: "Written by the builder", c: C.green, tok: 1400, d: "A description of each action the model may request: name, purpose, inputs. To the model this is just more prompt text.", ex: "lookup_policy(policy_id) → returns the policy terms\ncreate_draft_letter(claim_id, body) → saves a draft for a human to send" },
+  { id: "memory", t: "Memory & instructions files", who: "Loaded by the harness", c: C.purple, tok: 600, d: "Standing notes about this user, team or project that are loaded automatically at the start.", ex: "Team convention: reply in Dutch unless the customer wrote in English. Always quote the article number." },
+  { id: "docs", t: "Retrieved documents", who: "Fetched for this question", c: C.cyan, tok: 3200, d: "Passages pulled in because they look relevant to the question. The basis for a grounded answer.", ex: "[policy_4471.pdf §6.2] Water damage from burst pipes is covered up to €25,000. Gradual leakage is excluded…" },
+  { id: "examples", t: "Examples (few-shot)", who: "Written by the builder", c: C.magenta, tok: 700, d: "Two or three worked examples of a good answer. Often the single most effective way to get the format and tone right.", ex: "Q: Is storm damage to my fence covered?\nA: Yes, under §4.1, up to €5,000, with a €250 excess. [policy §4.1]" },
+  { id: "history", t: "Conversation so far", who: "Accumulates", c: C.grey, tok: 1800, d: "Every earlier message and tool result. The model has no memory of its own: the history is resent each time, and it grows.", ex: "User: My kitchen flooded last night.\nAssistant: I'm sorry to hear that. Was it a burst pipe or a slow leak?" },
+  { id: "user", t: "User message", who: "Written by the user", c: C.yellow, tok: 40, d: "The part people think of as “the prompt”. Usually the smallest piece of what is sent.", ex: "It was a burst pipe under the sink. Am I covered?" },
+];
+const PAT = {
+  "Zero-shot": ["Just ask.", "Summarise this contract in five bullets.", "Simple, well-known tasks."],
+  "Few-shot": ["Show two or three examples first.", "Here are three tickets with their category. Now categorise this one.", "Consistent format, house style, edge cases."],
+  "Chain of thought": ["Ask it to reason before answering.", "Work through the eligibility rules step by step, then give the decision.", "Multi-step logic, calculations, trade-offs."],
+  "Role & audience": ["Say who is writing and who is reading.", "You are a tax specialist. Explain this to a founder with no finance background.", "Tone and depth."],
+  "Structured output": ["Fix the shape of the answer.", "Return JSON with fields: decision, article, confidence.", "Anything another system will read."],
+  "Prompt chaining": ["Split the job into steps, each with its own prompt.", "1 extract the facts → 2 check against policy → 3 draft the letter.", "Long tasks where each step can be checked."],
+};
+const left = h("div", {}, stage);
+h("div", { class: "eyebrow", style: "margin:4px 0 10px", text: "What is actually sent on one call" }, left);
+const stackEl = h("div", { style: "display:flex;flex-direction:column;gap:6px" }, left), rows = {};
+const total = PARTS.reduce((a, p) => a + p.tok, 0);
+for (const p of PARTS) {
+  const r = h("div", { class: "glass", style: `cursor:pointer;padding:0;overflow:hidden;border-color:${hexA(p.c, 0.6)};transition:box-shadow .2s`, on: { click: () => pick(p.id) } }, stackEl);
+  const head = h("div", { style: `display:flex;align-items:center;gap:14px;padding:12px 16px;background:linear-gradient(90deg,${hexA(p.c, 0.25)} ${Math.max(3, (p.tok / total) * 100 * 2.6)}%,transparent 0)` }, r);
+  h("b", { style: "font-size:16px", text: p.t }, head); h("span", { class: "hint", text: p.who }, head);
+  h("span", { style: "margin-left:auto;font-variant-numeric:tabular-nums;font-size:13px;color:var(--muted)", text: `~${p.tok.toLocaleString()} tokens` }, head);
+  const body = h("div", { class: "mono", hidden: "", style: "padding:0 16px 14px;color:rgba(255,255,255,.82)", text: p.ex }, r);
+  rows[p.id] = { r, body };
+}
+h("p", { class: "hint", style: "margin-top:10px", text: `In this example the user typed 40 tokens. The model received about ${total.toLocaleString()}. Token counts are illustrative.` }, left);
+const ro = readout(side), pc = card(side, "Six prompting patterns"), pw = h("div", { style: "display:flex;flex-wrap:wrap;gap:6px" }, pc.body), pb = h("div", { style: "margin-top:12px" }, pc.body);
+Object.keys(PAT).forEach((k, i) => { const c = h("span", { class: "chip tap", text: k, on: { click: () => { [...pw.children].forEach((x) => x.classList.toggle("on", x === c)); const [what, ex, when] = PAT[k]; pb.innerHTML = `<p><b>${what}</b></p><div class="code mono" style="margin:8px 0">${ex}</div><p><b>Use for:</b> ${when}</p>`; } } }, pw); if (i === 1) c.click(); });
+const who = card(side, "Who controls what");
+who.body.innerHTML = "<p>The <b>builder</b> controls the top of the stack, the <b>harness</b> fills the middle, and the <b>user</b> adds one line at the bottom. When an answer is wrong, the cause is usually higher up than the user's message.</p>";
+function pick(id) {
+  const p = PARTS.find((x) => x.id === id);
+  for (const k in rows) { rows[k].body.hidden = k !== id; rows[k].r.style.boxShadow = k === id ? `0 0 0 2px ${p.c}, 0 0 26px ${hexA(p.c, 0.35)}` : "none"; }
+  ro.set(p.who, p.t, `${p.d}<p style="margin-top:8px"><b>${Math.round((p.tok / total) * 100)}%</b> of this call.</p>`);
+}
+pick("system");
+
+</script>
+</body>
+</html>

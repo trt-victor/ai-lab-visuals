@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="whiteboard">
+<main class="page wide"><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- The whiteboard: 13 concepts in four clusters, with labelled links; deep-dive pages light up per concept ----
+const W = 1600, H = 1010, sv = svg(stage, W, H), g = s("g", {}, sv);
+const P = (id) => PAGES.find((p) => p.id.startsWith(id));
+const clusters = [
+  { id: "found", label: "Foundations: what it is", x: 40, y: 50, w: 470, h: 370, c: C.purple },
+  { id: "talk", label: "Talking to models", x: 565, y: 50, w: 470, h: 370, c: C.blue },
+  { id: "build", label: "Building systems", x: 1090, y: 50, w: 470, h: 370, c: C.cyan },
+  { id: "human", label: "Humans in control", x: 40, y: 470, w: 1520, h: 250, c: C.orange },
+  { id: "deep", label: "Deep dives: where each concept goes next", x: 40, y: 770, w: 1520, h: 210, c: C.yellow },
+];
+const concepts = [
+  ["01", 275, 150, "found"], ["03", 160, 310, "found"], ["02", 390, 310, "found"],
+  ["08", 800, 150, "talk"], ["12", 685, 310, "talk"], ["11", 915, 310, "talk"],
+  ["05", 1215, 160, "build"], ["06", 1435, 160, "build"], ["13", 1215, 320, "build"], ["07", 1435, 320, "build"],
+  ["04", 330, 600, "human"], ["09", 800, 600, "human"], ["10", 1270, 600, "human"],
+];
+const rel = [
+  ["01", "03", "ML is the engine"], ["01", "02", "who supplies it"], ["03", "08", "models are steered by"], ["08", "12", "must fit inside"], ["12", "11", "gaps get invented"],
+  ["08", "05", "prompt + loop ="], ["05", "06", "an agent is made of"], ["06", "13", "tools arrive via"], ["06", "07", "knowledge as a graph"], ["11", "09", "so humans stay in"],
+  ["04", "05", "needs a harness"], ["09", "10", "same idea, live"], ["07", "11", "grounding reduces"],
+];
+const SHORT = { "02": "Industry: chip to data", "05": "Harness, prompt, loop", "06": "Skills, tools, agents, memory", "09": "Human-in-the-loop: the dial", "10": "Human-in-the-loop: live workflow", "03": "Intelligence & ML" };
+const deep = { "01": ["20", "25"], "02": ["26", "27"], "03": ["22"], "04": ["22", "23"], "05": ["15", "23"], "06": ["24", "15"], "07": ["23"], "08": ["14"], "09": ["17", "18"], "10": ["16", "19"], "11": ["22", "28"], "12": ["26", "14"], "13": ["28", "27"] };
+for (const c of clusters) {
+  s("rect", { x: c.x, y: c.y, width: c.w, height: c.h, rx: 28, fill: hexA(c.c, 0.06), stroke: hexA(c.c, 0.5), "stroke-width": 1.5, "stroke-dasharray": "6 8" }, g);
+  text(g, c.x + 24, c.y + 34, c.label.toUpperCase(), { size: 13, weight: 700, fill: c.c, anchor: "start", "letter-spacing": 2 });
+}
+const edgesG = s("g", {}, g), nodes = {}, edgeEls = [];
+for (const [id, x, y, cl] of concepts) {
+  const p = P(id), c = clusters.find((k) => k.id === cl).c;
+  const n = node(g, { x, y, w: 200, h: 86, label: SHORT[id] || p.title, size: 16, max: 20, color: c, on: () => pick(id) });
+  s("circle", { cx: x - 100, cy: y - 43, r: 17, fill: c }, n); text(n, x - 100, y - 37, id, { size: 14, weight: 700, fill: "#111" });
+  nodes[id] = n;
+}
+for (const [a, b, label] of rel) {
+  const A = nodes[a], B = nodes[b], p = link(edgesG, A, B, { color: "rgba(255,255,255,.42)", curve: 18 });
+  const m = p.getPointAtLength(p.getTotalLength() / 2);
+  const t = text(edgesG, m.x, m.y - 6, label, { size: 11.5, weight: 500, fill: "rgba(255,255,255,.7)", stroke: "#0b0718", "stroke-width": 4, "paint-order": "stroke" });
+  edgeEls.push({ a, b, p, t });
+}
+// deep-dive chips
+const dd = PAGES.filter((p) => +p.id.slice(0, 2) >= 14), chips = {};
+dd.forEach((p, i) => {
+  const col = i % 5, row = Math.floor(i / 5), x = 200 + col * 300, y = 838 + row * 48, id = p.id.slice(0, 2);
+  chips[id] = node(g, { x, y, w: 280, h: 38, label: `${id} · ${p.title.replace(/:.*/, "")}`.slice(0, 36), size: 12.5, rx: 19, color: "rgba(255,255,255,.3)", on: () => (location.href = p.file) });
+});
+const ddG = s("g", {}, g);
+const pz = panzoom(sv, g, { min: 0.6, max: 4 }); zoomButtons(stage, pz);
+
+const ro = readout(side);
+const act = h("div", { class: "card glass" }, side), open = h("a", { class: "btn primary", text: "Open this page ›", href: "#" }, act);
+h("p", { class: "hint", style: "margin-top:10px", text: "Drag to pan, scroll or pinch to zoom. Tap a concept to see its links and deep dives; tap a deep-dive chip to open it." }, act);
+const zc = card(side, "Zoom to a cluster"); seg(zc.body, [["all", "All"], ...clusters.map((c) => [c.id, c.label.replace(/:.*/, "")])], "all", (id) => { const c = clusters.find((k) => k.id === id); c ? pz.fit(c.x, c.y, c.w, c.h, 30) : pz.reset(); });
+const lg = card(side, "Reading the board"); legend(lg.body, clusters.map((c) => [c.label.replace(/:.*/, ""), c.c]));
+h("p", { style: "margin-top:10px", html: "Solid arrows read as a sentence: <b>prompts</b> must fit inside the <b>context window</b>. Dashed yellow lines show where a concept is taken further." }, lg.body);
+
+function pick(id) {
+  const p = P(id), linked = new Set([id]);
+  for (const e of edgeEls) { const on = e.a === id || e.b === id; if (on) { linked.add(e.a); linked.add(e.b); } e.p.setAttribute("stroke", on ? C.yellow : "rgba(255,255,255,.18)"); e.p.setAttribute("stroke-width", on ? 3 : 1.5); e.p.setAttribute("marker-end", arrow(sv, on ? C.yellow : "rgba(255,255,255,.42)")); e.t.setAttribute("fill", on ? "#fff" : "rgba(255,255,255,.3)"); e.t.style.opacity = on ? 1 : 0.5; }
+  for (const k in nodes) { nodes[k].active(k === id ? true : null); nodes[k].dim(!linked.has(k)); }
+  ddG.innerHTML = "";
+  for (const k in chips) { const on = (deep[id] || []).includes(k); chips[k].rect.setAttribute("stroke", on ? C.yellow : "rgba(255,255,255,.3)"); chips[k].dim(!on); if (on) edge(ddG, [nodes[id].cx, nodes[id].cy + 43], [chips[k].cx, chips[k].cy - 19], { color: C.yellow, dash: "5 6", width: 1.5, arrow: false, curve: 30 }); }
+  const out = edgeEls.filter((e) => e.a === id).map((e) => `<li><b>${e.t.textContent}</b> → ${P(e.b).title}</li>`).join(""), inn = edgeEls.filter((e) => e.b === id).map((e) => `<li>${P(e.a).title} → <b>${e.t.textContent}</b></li>`).join("");
+  ro.set(`Concept ${id}`, p.title, `${p.lede}<ul>${inn}${out}</ul>`);
+  open.href = p.file; open.textContent = `Open ${id} · ${p.title.replace(/:.*/, "")} ›`;
+}
+pick("01");
+
+</script>
+</body>
+</html>

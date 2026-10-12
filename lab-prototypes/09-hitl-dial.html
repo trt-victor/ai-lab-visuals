@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="09-hitl-dial">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Human-in-the-loop as a dial: set autonomy per decision type and see cost, speed and exposure respond ----
+const LEVELS = [
+  ["Human only", "People do the work. AI is not involved.", 1.0, 1.0],
+  ["AI suggests", "AI proposes; a person does the work and decides.", 0.7, 0.92],
+  ["Approval gate", "AI does the work; a person approves every item before it takes effect.", 0.3, 0.85],
+  ["Exception review", "AI acts. People see only low-confidence items and a sample.", 0.08, 0.45],
+  ["Full automation", "AI acts. People look at dashboards, not items.", 0.01, 0.0],
+]; // [name, text, share of manual human time, share of AI errors caught]
+const DEC = [
+  { t: "Draft a reply to a customer question", min: 6, vol: 4000, impact: 1, rev: "Easy to correct", zone: [2, 4], err: 0.05 },
+  { t: "Match invoices to purchase orders", min: 4, vol: 12000, impact: 1.5, rev: "Reversible before payment", zone: [3, 4], err: 0.03 },
+  { t: "Approve a refund up to €2,000", min: 8, vol: 1500, impact: 3, rev: "Money leaves; recoverable with effort", zone: [2, 3], err: 0.05 },
+  { t: "Change a production system configuration", min: 20, vol: 200, impact: 4, rev: "Outage possible", zone: [1, 2], err: 0.06 },
+  { t: "Reject a mortgage application", min: 45, vol: 600, impact: 5, rev: "Legal right to human review", zone: [0, 2], err: 0.06 },
+];
+const bar = h("div", { class: "bar" }, stage);
+const sel = h("select", { class: "btn", style: "max-width:100%", on: { change: () => upd() } }, bar); DEC.forEach((d, i) => h("option", { value: i, text: d.t }, sel));
+const sv = svg(stage, 1000, 560), CX = 500, CY = 470, R = 330;
+const pol = (a, r = R) => [CX + r * Math.cos(Math.PI * (1 - a)), CY - r * Math.sin(Math.PI * (1 - a))]; // a: 0 (left) → 1 (right)
+const arc = (a0, a1, r) => { const [x0, y0] = pol(a0, r), [x1, y1] = pol(a1, r); return `M${x0} ${y0} A${r} ${r} 0 0 1 ${x1} ${y1}`; };
+s("path", { d: arc(0, 1, R), fill: "none", stroke: "rgba(255,255,255,.14)", "stroke-width": 46, "stroke-linecap": "round" }, sv);
+const zone = s("path", { fill: "none", stroke: hexA(C.green, 0.55), "stroke-width": 46 }, sv);
+const prog = s("path", { fill: "none", stroke: C.yellow, "stroke-width": 10, "stroke-linecap": "round" }, sv);
+LEVELS.forEach(([n], i) => { const a = i / 4, [x, y] = pol(a, R + 52), [tx, ty] = pol(a, R); s("circle", { cx: tx, cy: ty, r: 7, fill: "#fff" }, sv); text(sv, x, y, n, { size: 14.5, weight: 700, max: 10, anchor: i === 0 ? "end" : i === 4 ? "start" : "middle" }); });
+text(sv, CX - R - 8, CY + 54, "← more human control", { size: 13, fill: "rgba(255,255,255,.6)", anchor: "start", weight: 400 }); text(sv, CX + R + 8, CY + 54, "more autonomy →", { size: 13, fill: "rgba(255,255,255,.6)", anchor: "end", weight: 400 });
+const needle = s("g", {}, sv); s("line", { x1: CX, y1: CY, x2: CX, y2: CY - R + 44, stroke: C.yellow, "stroke-width": 7, "stroke-linecap": "round" }, needle); s("circle", { cx: CX, cy: CY - R, r: 20, fill: C.yellow, filter: "url(#glow)", style: "cursor:grab" }, needle);
+s("circle", { cx: CX, cy: CY, r: 30, fill: "#1a1230", stroke: C.yellow, "stroke-width": 4 }, sv);
+const big = text(sv, CX, CY - 150, "", { size: 34, weight: 700 }), small = text(sv, CX, CY - 112, "", { size: 15, weight: 400, fill: "rgba(255,255,255,.75)", max: 46 }), verdict = text(sv, CX, CY - 50, "", { size: 16, weight: 700 });
+let a = 0.5, dragging = false;
+const setFrom = (e) => { const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(sv.getScreenCTM().inverse()); let ang = Math.atan2(CY - p.y, p.x - CX); if (ang < -Math.PI / 2) ang = Math.PI; a = clamp(1 - Math.max(0, ang) / Math.PI, 0, 1); upd(); };
+sv.addEventListener("pointerdown", (e) => { dragging = true; sv.setPointerCapture(e.pointerId); setFrom(e); });
+sv.addEventListener("pointermove", (e) => dragging && setFrom(e));
+sv.addEventListener("pointerup", () => { dragging = false; const t = Math.round(a * 4) / 4, a0 = a; tween(200, (k) => { a = lerp(a0, t, k); upd(); }); });
+h("p", { class: "hint", style: "margin:6px 4px 0", text: "Drag the dial. The green band is where this type of decision usually belongs, given its impact and reversibility." }, stage);
+const K = kpis(side, [["hrs", "Human hours / month"], ["cyc", "Typical turnaround"], ["err", "Wrong outcomes / 1,000"], ["sev", "Exposure"]]);
+const ro = readout(side), pr = card(side, "The principle");
+pr.body.innerHTML = "<p>Autonomy is <b>set per decision</b>, not per system. One process can hold all five settings at once: automate the reconciliation, gate the refund, keep the rejection with a person.</p><p>Where the law gives someone a right to human review, the dial has a hard stop.</p>";
+const interp = (idx) => { const x = a * 4, i = Math.min(3, Math.floor(x)), f = x - i; return lerp(LEVELS[i][idx], LEVELS[i + 1][idx], f); };
+function upd() {
+  const d = DEC[+sel.value], lv = Math.round(a * 4), L = LEVELS[lv];
+  needle.setAttribute("transform", `rotate(${-90 + a * 180} ${CX} ${CY})`);
+  zone.setAttribute("d", arc(Math.max(0.001, d.zone[0] / 4 - 0.04), Math.min(0.999, d.zone[1] / 4 + 0.04), R)); prog.setAttribute("d", arc(0, Math.max(0.002, a), R - 34));
+  big.textContent = L[0]; small.textContent = ""; small.remove(); const st = text(sv, CX, CY - 112, L[1], { size: 15, weight: 400, fill: "rgba(255,255,255,.75)", max: 46 }); st.id = "sub"; sv.querySelectorAll("#sub").forEach((e, i, all) => i < all.length - 1 && e.remove());
+  const x = a * 4, under = x < d.zone[0] - 0.3, over = x > d.zone[1] + 0.3;
+  verdict.textContent = over ? "Over-automated for this decision" : under ? "Under-automated: people doing work a check could do" : "Appropriate for this decision"; verdict.setAttribute("fill", over ? C.red : under ? C.orange : C.green);
+  const share = interp(2), caught = interp(3), hrs = (d.vol * d.min * share) / 60;
+  const wrong = lv === 0 && a < 0.06 ? 20 : (d.err * (1 - caught) + 0.01 * share) * 1000; // people err too: ~2% manual
+  K.hrs(Math.round(hrs).toLocaleString(), null, `was ${Math.round((d.vol * d.min) / 60).toLocaleString()} fully manual`);
+  K.cyc(a < 0.2 ? "days" : a < 0.6 ? "hours" : a < 0.85 ? "minutes" : "seconds"); K.err(wrong.toFixed(0), wrong > 30 ? C.red : wrong > 12 ? C.yellow : C.green);
+  const ex = wrong * d.impact; K.sev(ex > 120 ? "High" : ex > 40 ? "Medium" : "Low", ex > 120 ? C.red : ex > 40 ? C.yellow : C.green, d.rev);
+  ro.set("This decision", d.t, `<b>${d.vol.toLocaleString()}</b> a month, about <b>${d.min} minutes</b> each by hand. Impact when wrong: <b>${"●".repeat(d.impact)}${"○".repeat(5 - d.impact)}</b>. ${d.rev}.<p style="margin-top:8px">Usual setting: <b>${LEVELS[d.zone[0]][0]}</b> to <b>${LEVELS[d.zone[1]][0]}</b>.</p>`);
+}
+upd();
+
+</script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Where the effort goes — human judgment concentrates</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:opsz,wght@6..12,300;6..12,400;6..12,600;6..12,700;6..12,800;6..12,900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#1a1a24; --surface:#23232f; --raised:#2e2e38;
+    --accent:#ffe600; --text:#ffffff; --muted:#c4c4cd; --dim:#747480;
+    --mech:#5d5d6e;
+    --line:rgba(255,255,255,0.10); --line-2:rgba(255,255,255,0.20);
+    --radius:10px; --radius-lg:14px;
+    --font:'Nunito Sans','Segoe UI',system-ui,-apple-system,sans-serif;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);
+       padding:40px 24px 64px;min-height:100vh;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:780px;margin:0 auto}
+  .eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+  h1{font-size:27px;font-weight:800;letter-spacing:-.01em;line-height:1.1;margin-bottom:10px}
+  h1 .y{color:var(--accent)}
+  .sub{font-size:14px;color:var(--muted);line-height:1.6;max-width:62ch;margin-bottom:26px}
+
+  .stats{display:flex;gap:14px;margin-bottom:22px}
+  .stat{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);padding:16px 18px}
+  .stat .k{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+  .stat .v{font-size:34px;font-weight:900;line-height:1;font-variant-numeric:tabular-nums}
+  .stat.mech .v{color:var(--mech)}
+  .stat.judg .v{color:var(--accent)}
+  .stat .v small{font-size:16px;font-weight:700}
+
+  .slider-wrap{margin:6px 0 26px}
+  .slider-head{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);
+               font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:3px;
+    background:linear-gradient(90deg,var(--mech),var(--accent));outline:none;cursor:pointer}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;
+    background:#fff;border:3px solid var(--accent);cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+  input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:#fff;
+    border:3px solid var(--accent);cursor:pointer}
+  input[type=range]:focus-visible{outline:2px solid var(--accent);outline-offset:6px}
+  .ticks{display:flex;justify-content:space-between;margin-top:9px}
+  .tick{font-size:12px;font-weight:700;color:var(--dim);cursor:pointer;background:none;border:none;font-family:var(--font);padding:2px 0}
+  .tick:hover{color:var(--text)}
+
+  .group-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+               color:var(--dim);margin:20px 0 10px;display:flex;align-items:center;gap:9px}
+  .group-label .swatch{width:12px;height:12px;border-radius:3px}
+  .bars{display:flex;flex-direction:column;gap:9px}
+  .bar-row{display:grid;grid-template-columns:170px 1fr 42px;align-items:center;gap:12px}
+  .bar-label{font-size:12.5px;color:var(--muted);text-align:right;line-height:1.25}
+  .track{height:22px;background:var(--raised);border-radius:6px;overflow:hidden}
+  .fill{height:100%;border-radius:6px;transition:width .12s linear}
+  .fill.mech{background:var(--mech)}
+  .fill.judg{background:var(--accent)}
+  .bar-val{font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--muted)}
+
+  .readout{margin-top:26px;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);
+           border-radius:var(--radius-lg);padding:16px 18px}
+  .ro-title{font-size:15px;font-weight:700;margin-bottom:5px}
+  .ro-body{font-size:13px;color:var(--muted);line-height:1.6}
+  .ro-body b{color:var(--text);font-weight:600}
+  .foot{margin-top:20px;font-size:11px;color:var(--dim);line-height:1.6;max-width:62ch}
+  @media(max-width:560px){.bar-row{grid-template-columns:120px 1fr 36px}.bar-label{font-size:11.5px}.stats{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">Governed delivery · 03</p>
+  <h1>The effort doesn't vanish. It <span class="y">moves</span></h1>
+  <p class="sub">Governed AI delivery doesn't remove developers — it changes where their effort is spent. Drag the adoption slider: mechanical work shrinks, and the freed attention concentrates on architecture, review and the decisions at the critical gates.</p>
+
+  <div class="stats">
+    <div class="stat mech"><div class="k">Mechanical work</div><div class="v"><span id="s-mech">70</span><small>%</small></div></div>
+    <div class="stat judg"><div class="k">Judgment work</div><div class="v"><span id="s-judg">30</span><small>%</small></div></div>
+  </div>
+
+  <div class="slider-wrap">
+    <div class="slider-head"><span>Hand-built delivery</span><span>Governed AI delivery</span></div>
+    <input id="slider" type="range" min="0" max="100" value="0" aria-label="Governed AI adoption">
+    <div class="ticks">
+      <button class="tick" data-v="0">Today</button>
+      <button class="tick" data-v="50">Transitioning</button>
+      <button class="tick" data-v="100">Governed</button>
+    </div>
+  </div>
+
+  <div class="group-label"><span class="swatch" style="background:var(--mech)"></span>Mechanical — less of it</div>
+  <div class="bars" id="mech-bars"></div>
+
+  <div class="group-label"><span class="swatch" style="background:var(--accent)"></span>Judgment — concentrated here</div>
+  <div class="bars" id="judg-bars"></div>
+
+  <div class="readout">
+    <div class="ro-title" id="ro-title">Hand-built delivery</div>
+    <div class="ro-body" id="ro-body">Most human effort goes to boilerplate, coordination and chasing status and docs by hand.</div>
+  </div>
+
+  <p class="foot">Total human effort stays roughly constant — what changes is its shape. Less time on plumbing and chasing; more on the judgment a person is uniquely good at.</p>
+</div>
+
+<script>
+const cats=[
+  {label:'Boilerplate & wiring',   group:'mech', v0:30, v1:10},
+  {label:'Coordination & status',  group:'mech', v0:22, v1:8},
+  {label:'Manual documentation',   group:'mech', v0:18, v1:10},
+  {label:'Architecture judgment',  group:'judg', v0:11, v1:24},
+  {label:'Review & evidence',      group:'judg', v0:12, v1:26},
+  {label:'Decisions at the gates', group:'judg', v0:7,  v1:22},
+];
+const SCALE=30; // value that maps to a full track
+const mechWrap=document.getElementById('mech-bars');
+const judgWrap=document.getElementById('judg-bars');
+
+cats.forEach((c,i)=>{
+  const row=document.createElement('div'); row.className='bar-row';
+  row.innerHTML=`<div class="bar-label">${c.label}</div>
+    <div class="track"><div class="fill ${c.group}" id="fill-${i}"></div></div>
+    <div class="bar-val" id="val-${i}">0</div>`;
+  (c.group==='mech'?mechWrap:judgWrap).appendChild(row);
+});
+
+const slider=document.getElementById('slider');
+function update(){
+  const a=+slider.value/100;
+  let mechTot=0, judgTot=0;
+  cats.forEach((c,i)=>{
+    const v=c.v0+(c.v1-c.v0)*a;
+    document.getElementById('fill-'+i).style.width=Math.min(100,v/SCALE*100)+'%';
+    document.getElementById('val-'+i).textContent=Math.round(v);
+    if(c.group==='mech')mechTot+=v; else judgTot+=v;
+  });
+  const tot=mechTot+judgTot;
+  document.getElementById('s-mech').textContent=Math.round(mechTot/tot*100);
+  document.getElementById('s-judg').textContent=Math.round(judgTot/tot*100);
+
+  const t=document.getElementById('ro-title'), b=document.getElementById('ro-body');
+  if(a<0.2){ t.textContent='Hand-built delivery';
+    b.innerHTML='Most human effort goes to <b>boilerplate, coordination and chasing status and docs</b> by hand. Little capacity left for the hard calls.'; }
+  else if(a<0.75){ t.textContent='Transitioning';
+    b.innerHTML='Mechanical work is shrinking. Attention is starting to shift toward <b>architecture, review and gate decisions</b> — the same people, redirected.'; }
+  else { t.textContent='Governed AI delivery';
+    b.innerHTML='Plumbing and status-chasing are minimised. Human effort is now <b>concentrated at the critical gates</b>: architecture judgment, review of evidence, and the decisions that carry accountability.'; }
+}
+slider.addEventListener('input',update);
+document.querySelectorAll('.tick').forEach(btn=>{
+  btn.addEventListener('click',()=>{ slider.value=btn.dataset.v; update(); });
+});
+update();
+</script>
+</body>
+</html>

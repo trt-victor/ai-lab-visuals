@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="10-hitl-workflow">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Live workflow: items flow through six steps; set each step to human / approval gate / exception gate / auto ----
+const STEPS = ["Intake", "Classify", "Extract", "Decide", "Draft", "Send"];
+const MODES = { human: ["Human", C.blue, "A person does this step"], gate: ["Approval gate", C.yellow, "AI does it, a person approves every item"], exc: ["Exception gate", C.orange, "AI does it, a person sees only the uncertain cases"], auto: ["Automated", C.green, "AI does it, nobody looks"] };
+const ORDER = ["human", "gate", "exc", "auto"];
+const PRE = { "All manual": "human,human,human,human,human,human", "Gate everything": "gate,gate,gate,gate,gate,gate", "Risk-based": "auto,auto,exc,gate,exc,auto", "Full automation": "auto,auto,auto,auto,auto,auto" };
+let cfg = PRE["Risk-based"].split(","), items = [], t = 0, done = [], reviewers = 3, rate = 30, busy = 0, showErr = true, humanBusyTime = 0;
+const bar = h("div", { class: "bar" }, stage);
+const preSeg = seg(bar, Object.keys(PRE), "Risk-based", (k) => { cfg = PRE[k].split(","); restart(); });
+toggle(bar, "Show hidden errors", true, (v) => (showErr = v));
+const sv = svg(stage, 1000, 500), X = (i) => 110 + i * 156, Y = 300, boxes = [], labs = [], qT = [];
+s("line", { x1: 30, y1: Y, x2: 970, y2: Y, stroke: "rgba(255,255,255,.16)", "stroke-width": 3 }, sv);
+STEPS.forEach((n, i) => { const g = s("g", { style: "cursor:pointer" }, sv); const r = s("rect", { x: X(i) - 62, y: Y - 44, width: 124, height: 88, rx: 18, fill: "rgba(20,12,45,.9)", "stroke-width": 3 }, g); text(g, X(i), Y - 6, n, { size: 18, weight: 700 }); labs.push(text(g, X(i), Y + 20, "", { size: 12, weight: 700 })); qT.push(text(sv, X(i), Y + 70, "", { size: 12, fill: "rgba(255,255,255,.6)", weight: 400 })); g.addEventListener("click", () => { cfg[i] = ORDER[(ORDER.indexOf(cfg[i]) + 1) % 4]; paint(); }); boxes.push(r); });
+text(sv, 500, 40, "Tap a step to change who does it. Dots are cases; a stack above a step is a queue waiting for a person.", { size: 13, fill: "rgba(255,255,255,.6)", weight: 400 });
+const dots = s("g", {}, sv);
+function paint() { cfg.forEach((m, i) => { boxes[i].setAttribute("stroke", MODES[m][1]); labs[i].textContent = MODES[m][0]; labs[i].setAttribute("fill", MODES[m][1]); }); }
+const ctl = card(side, "Load and capacity");
+slider(ctl.body, { label: "Cases arriving per minute", min: 5, max: 90, value: rate }, (v) => (rate = v));
+slider(ctl.body, { label: "People available", min: 1, max: 12, value: reviewers }, (v) => (reviewers = v));
+const K = kpis(side, [["thr", "Completed / min"], ["cyc", "Avg time per case"], ["q", "Waiting for a person"], ["err", "Wrong outcomes"], ["load", "People busy"]]);
+const ro = readout(side), lg = card(side, "Step modes"); lg.body.innerHTML = Object.values(MODES).map(([n, c, d]) => `<p><b style="color:${c}">${n}</b> · ${d}</p>`).join("");
+function restart() { items = []; done = []; t = 0; humanBusyTime = 0; busy = 0; paint(); }
+// simulation: 1 real second = 6 simulated seconds
+const D = { ai: 0.8, human: 12, review: 2.5 };
+function stepSim(dt) {
+  t += dt;
+  if (Math.random() < (rate / 60) * dt) items.push({ i: 0, ph: "new", left: 0, err: false, born: t, x: 20, y: Y });
+  busy = items.filter((it) => it.ph === "work").length;
+  for (const it of items) {
+    if (it.ph === "new") { const m = cfg[it.i]; if (m === "human") it.ph = "wait"; else { it.ph = "ai"; it.left = D.ai; } }
+    else if (it.ph === "ai") { it.left -= dt; if (it.left <= 0) { if (Math.random() < 0.012) it.err = true; it.unsure = Math.random() < (it.err ? 0.7 : 0.15); const m = cfg[it.i]; if (m === "gate" || (m === "exc" && it.unsure)) it.ph = "wait"; else next(it); } }
+    else if (it.ph === "wait") { if (busy < reviewers) { busy++; it.ph = "work"; it.left = cfg[it.i] === "human" ? D.human : D.review; } }
+    else if (it.ph === "work") { it.left -= dt; humanBusyTime += dt; if (it.left <= 0) { if (cfg[it.i] === "human") { if (Math.random() < 0.015) it.err = true; } else if (it.err && Math.random() < 0.9) it.err = false; next(it); } }
+  }
+  items = items.filter((it) => { if (it.i < STEPS.length) return true; done.push({ t, dur: t - it.born, err: it.err }); return false; });
+  done = done.filter((d) => t - d.t < 120);
+}
+function next(it) { it.i++; it.ph = "new"; }
+function render() {
+  const per = STEPS.map(() => 0); dots.innerHTML = "";
+  for (const it of items) {
+    const i = Math.min(it.i, 5), waiting = it.ph === "wait" || it.ph === "work", k = waiting ? per[i]++ : 0;
+    const tx = waiting ? X(i) - 48 + (k % 9) * 12 : X(i) - 62 - 14, ty = waiting ? Y - 60 - Math.floor(k / 9) * 12 : Y;
+    it.x = lerp(it.x, tx, 0.18); it.y = lerp(it.y, ty, 0.18);
+    s("circle", { cx: it.x, cy: it.y, r: 5, fill: it.err && showErr ? C.red : it.ph === "work" ? C.blue : "#fff", opacity: k > 62 ? 0 : 1 }, dots);
+  }
+  STEPS.forEach((_, i) => (qT[i].textContent = per[i] > 0 ? `${per[i]} waiting` : ""));
+}
+let last = performance.now(), acc = 0;
+(function loop(now) {
+  const dt = Math.min(0.1, (now - last) / 1000) * 6; last = now; stepSim(dt); render(); acc += dt;
+  if (acc > 3) { acc = 0; const win = Math.min(120, t) || 1, thr = (done.length / win) * 60, cyc = done.length ? done.reduce((a, d) => a + d.dur, 0) / done.length : 0, q = items.filter((i) => i.ph === "wait").length, er = done.filter((d) => d.err).length, load = Math.min(1, busy / reviewers);
+    K.thr(thr.toFixed(0), thr > rate * 0.85 ? C.green : C.red, `${rate} arriving`); K.cyc(cyc < 90 ? `${cyc.toFixed(0)} s` : `${(cyc / 60).toFixed(1)} min`); K.q(q, q > 30 ? C.red : q > 8 ? C.yellow : C.green);
+    K.err(done.length ? `${((er / done.length) * 100).toFixed(1)}%` : "–", er / (done.length || 1) > 0.045 ? C.red : er / (done.length || 1) > 0.025 ? C.yellow : C.green, "of completed cases"); K.load(`${Math.round(load * 100)}%`, load > 0.95 ? C.red : C.green, `${reviewers} people`);
+    const jam = q > 30, risky = er / (done.length || 1) > 0.045;
+    ro.set("What the flow is telling you", jam ? "People are the bottleneck" : risky ? "Fast, but errors are getting out" : "Flowing, with errors caught", jam ? "Every case waits for a person, and the queue grows faster than it clears. Adding gates did not add control; it added delay. Move the low-risk steps to <b>automated</b> or <b>exception gate</b>." : risky ? "Nothing waits, and nobody is looking. Several cases in every hundred leave with an error, and no one sees which. Put a gate on the step where a wrong outcome is costly: usually <b>Decide</b>." : "People see the uncertain cases and the high-impact step. This is the design goal: <b>human attention where it changes the outcome</b>, automation everywhere else."); }
+  requestAnimationFrame(loop);
+})(last);
+paint();
+
+</script>
+</body>
+</html>

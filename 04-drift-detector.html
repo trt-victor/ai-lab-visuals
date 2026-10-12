@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drift detector — architecture as a checked artefact</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:opsz,wght@6..12,300;6..12,400;6..12,600;6..12,700;6..12,800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#1a1a24; --surface:#23232f; --raised:#2e2e38;
+    --accent:#ffe600; --danger:#e0654f; --ok:#43d6a0;
+    --text:#ffffff; --muted:#c4c4cd; --dim:#747480;
+    --line:rgba(255,255,255,0.10); --line-2:rgba(255,255,255,0.20);
+    --radius:10px; --radius-lg:14px;
+    --font:'Nunito Sans','Segoe UI',system-ui,-apple-system,sans-serif;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);
+       padding:40px 24px 64px;min-height:100vh;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:780px;margin:0 auto}
+  .eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+  h1{font-size:27px;font-weight:800;letter-spacing:-.01em;line-height:1.1;margin-bottom:10px}
+  h1 .y{color:var(--accent)}
+  .sub{font-size:14px;color:var(--muted);line-height:1.6;max-width:62ch;margin-bottom:24px}
+  .arch-svg{width:100%;display:block;margin-bottom:6px}
+  svg text{font-family:var(--font)}
+  .section-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:18px 0 10px}
+  .law-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  @media(max-width:560px){.law-grid{grid-template-columns:1fr}}
+  .law-row{display:flex;align-items:center;gap:11px;background:var(--surface);border:1px solid var(--line);
+           border-radius:var(--radius);padding:11px 13px;cursor:pointer;transition:border-color .15s;user-select:none}
+  .law-row:hover{border-color:var(--line-2)}
+  .law-toggle{width:34px;height:19px;border-radius:10px;border:1px solid var(--line-2);background:var(--raised);
+              position:relative;flex-shrink:0;transition:background .2s,border-color .2s}
+  .law-toggle.on{background:var(--accent);border-color:var(--accent)}
+  .law-toggle::after{content:'';position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;transition:transform .2s}
+  .law-toggle.on::after{transform:translateX(15px)}
+  .law-label{font-size:12px;color:var(--muted);line-height:1.35;flex:1}
+  .law-label strong{display:block;font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:1px}
+  .tag{font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;border-radius:4px;margin-left:6px}
+  .tag.ok{color:var(--ok);border:1px solid rgba(67,214,160,.4)}
+  .tag.viol{color:var(--danger);border:1px solid rgba(224,101,79,.45)}
+  .verdict{margin-top:18px;border-radius:var(--radius-lg);border:1px solid var(--line);border-left:4px solid var(--accent);
+           background:var(--surface);padding:16px 18px;display:flex;gap:14px;align-items:flex-start}
+  .v-icon{width:34px;height:34px;border-radius:9px;flex-shrink:0;display:grid;place-items:center;font-size:19px;font-weight:900}
+  .v-title{font-size:15px;font-weight:700;margin-bottom:4px}
+  .v-reason{font-size:13px;color:var(--muted);line-height:1.55}
+  .v-rules{margin-top:9px;display:flex;flex-direction:column;gap:5px}
+  .v-rule{font-size:12px;color:var(--danger);font-weight:600;display:flex;gap:7px;align-items:baseline}
+  .v-rule::before{content:'⚠';font-size:11px}
+  .foot{margin-top:20px;font-size:11px;color:var(--dim);line-height:1.6;max-width:62ch}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">Governed delivery · 04</p>
+  <h1>Architecture is a <span class="y">checked artefact</span></h1>
+  <p class="sub">The declared model in <code style="color:#c4c4cd">workspace.dsl</code> isn't slideware — it's enforced. Propose a change below and the C4 governor checks it against the declared model and policies. Drift is surfaced before it becomes expensive.</p>
+
+  <svg class="arch-svg" viewBox="0 0 680 360" role="img" aria-label="Four-service architecture with a governor checking proposed changes">
+    <defs>
+      <marker id="ah-ok" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="#43d6a0" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+      <marker id="ah-bad" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="#e0654f" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+
+    <!-- auth guard edges (declared) -->
+    <g stroke="#3a3a46" stroke-width="1.2" stroke-dasharray="4 3" fill="none">
+      <line x1="316" y1="92" x2="172" y2="158"/>
+      <line x1="340" y1="98" x2="340" y2="158"/>
+      <line x1="364" y1="92" x2="508" y2="158"/>
+    </g>
+    <!-- declared allowed API: Case -> Ledger -->
+    <line x1="402" y1="190" x2="468" y2="190" stroke="#5d5d6e" stroke-width="2" marker-end="url(#ah-ok)"/>
+
+    <!-- owns-db lines -->
+    <g stroke="#33333f" stroke-width="1.6">
+      <line x1="150" y1="216" x2="150" y2="262"/>
+      <line x1="340" y1="216" x2="340" y2="262"/>
+      <line x1="530" y1="216" x2="530" y2="262"/>
+    </g>
+
+    <!-- DB cylinders -->
+    <g id="dbs"></g>
+
+    <!-- ===== dynamic change layers (hidden by default) ===== -->
+    <!-- api: Timeline -> Case (allowed) -->
+    <line id="e-api" x1="212" y1="190" x2="278" y2="190" stroke="#43d6a0" stroke-width="2.4" marker-end="url(#ah-ok)" style="display:none"/>
+    <text id="e-api-l" x="245" y="180" text-anchor="middle" font-size="9.5" fill="#43d6a0" style="display:none">API ✓</text>
+
+    <!-- dbread: Timeline -> Case DB (violation) -->
+    <path id="e-dbread" d="M168 216 C 220 270, 270 285, 316 285" fill="none" stroke="#e0654f" stroke-width="2.4" stroke-dasharray="6 4" marker-end="url(#ah-bad)" style="display:none"/>
+    <g id="f-dbread" style="display:none">
+      <circle cx="245" cy="262" r="10" fill="#e0654f"/>
+      <text x="245" y="263" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="900" fill="#1a1a24">!</text>
+    </g>
+
+    <!-- newsvc: undeclared Reporting service -->
+    <g id="n-report" style="display:none">
+      <rect x="470" y="40" width="120" height="50" rx="9" fill="#2a2026" stroke="#e0654f" stroke-width="1.6" stroke-dasharray="6 4"/>
+      <text x="530" y="60" text-anchor="middle" font-size="12.5" font-weight="700" fill="#e9a08f">Reporting</text>
+      <text x="530" y="76" text-anchor="middle" font-size="9.5" fill="#b06b5b">not in model</text>
+      <circle cx="586" cy="44" r="10" fill="#e0654f"/>
+      <text x="586" y="45" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="900" fill="#1a1a24">!</text>
+    </g>
+
+    <!-- service boxes -->
+    <g id="services"></g>
+  </svg>
+
+  <p class="section-label">Propose a change — the governor checks each one</p>
+  <div class="law-grid">
+    <div class="law-row" data-key="api">
+      <div class="law-toggle" id="t-api"></div>
+      <div class="law-label"><strong>Timeline → Case via API <span class="tag ok">allowed</span></strong>Service-to-service call through a declared interface</div>
+    </div>
+    <div class="law-row" data-key="dbread">
+      <div class="law-toggle" id="t-dbread"></div>
+      <div class="law-label"><strong>Timeline reads Case DB <span class="tag viol">checked</span></strong>Direct database access across a service boundary</div>
+    </div>
+    <div class="law-row" data-key="noauth">
+      <div class="law-toggle" id="t-noauth"></div>
+      <div class="law-label"><strong>Drop auth on /admin <span class="tag viol">checked</span></strong>Remove authentication from a non-public endpoint</div>
+    </div>
+    <div class="law-row" data-key="newsvc">
+      <div class="law-toggle" id="t-newsvc"></div>
+      <div class="law-label"><strong>Ship undeclared service <span class="tag viol">checked</span></strong>A Reporting service absent from workspace.dsl</div>
+    </div>
+  </div>
+
+  <div class="verdict">
+    <div class="v-icon" id="v-icon" style="background:rgba(67,214,160,.16);color:var(--ok)">✓</div>
+    <div style="flex:1">
+      <div class="v-title" id="v-title">Aligned with the declared model</div>
+      <div class="v-reason" id="v-reason">No proposed changes. The architecture matches workspace.dsl and its policies — nothing for the governor to flag.</div>
+      <div class="v-rules" id="v-rules"></div>
+    </div>
+  </div>
+
+  <p class="foot">The c4-architecture-governor checks code and IaC against the declared model on every change. Allowed changes pass quietly; drift is caught at review, where it is cheap — not in production, where it is not.</p>
+</div>
+
+<script>
+const NS='http://www.w3.org/2000/svg';
+// service boxes
+const services=[
+  {id:'auth',label:'Auth',sub:'gateway',x:340,y:72},
+  {id:'timeline',label:'Timeline',sub:'service',x:150,y:191},
+  {id:'case',label:'Case',sub:'service',x:340,y:191},
+  {id:'ledger',label:'Ledger',sub:'service',x:530,y:191},
+];
+const sG=document.getElementById('services');
+const W=120,H=50;
+services.forEach(s=>{
+  const g=document.createElementNS(NS,'g'); g.setAttribute('id','svc-'+s.id);
+  const r=document.createElementNS(NS,'rect');
+  r.setAttribute('x',s.x-W/2);r.setAttribute('y',s.y-H/2);r.setAttribute('width',W);r.setAttribute('height',H);
+  r.setAttribute('rx',9);r.setAttribute('fill','#23232f');r.setAttribute('stroke','#3a3a46');r.setAttribute('stroke-width','1.2');
+  g.appendChild(r);
+  const t1=document.createElementNS(NS,'text');
+  t1.setAttribute('x',s.x);t1.setAttribute('y',s.y-4);t1.setAttribute('text-anchor','middle');
+  t1.setAttribute('font-size','13');t1.setAttribute('font-weight','700');t1.setAttribute('fill','#ececf2');t1.textContent=s.label;
+  g.appendChild(t1);
+  const t2=document.createElementNS(NS,'text');
+  t2.setAttribute('x',s.x);t2.setAttribute('y',s.y+12);t2.setAttribute('text-anchor','middle');
+  t2.setAttribute('font-size','9.5');t2.setAttribute('fill','#8a8a96');t2.textContent=s.sub;
+  g.appendChild(t2);
+  sG.appendChild(g);
+});
+// DB cylinders
+const dbs=[{x:150},{x:340},{x:530}];
+const dG=document.getElementById('dbs');
+dbs.forEach(d=>{
+  const y=285, w=46, h=26;
+  const rect=document.createElementNS(NS,'rect');
+  rect.setAttribute('x',d.x-w/2);rect.setAttribute('y',y-h/2);rect.setAttribute('width',w);rect.setAttribute('height',h);
+  rect.setAttribute('fill','#23232f');rect.setAttribute('stroke','#3a3a46');rect.setAttribute('stroke-width','1');dG.appendChild(rect);
+  const top=document.createElementNS(NS,'ellipse');
+  top.setAttribute('cx',d.x);top.setAttribute('cy',y-h/2);top.setAttribute('rx',w/2);top.setAttribute('ry',5);
+  top.setAttribute('fill','#2e2e38');top.setAttribute('stroke','#3a3a46');top.setAttribute('stroke-width','1');dG.appendChild(top);
+  const bot=document.createElementNS(NS,'ellipse');
+  bot.setAttribute('cx',d.x);bot.setAttribute('cy',y+h/2);bot.setAttribute('rx',w/2);bot.setAttribute('ry',5);
+  bot.setAttribute('fill','#23232f');bot.setAttribute('stroke','#3a3a46');bot.setAttribute('stroke-width','1');dG.appendChild(bot);
+  const lbl=document.createElementNS(NS,'text');
+  lbl.setAttribute('x',d.x);lbl.setAttribute('y',y);lbl.setAttribute('text-anchor','middle');lbl.setAttribute('dominant-baseline','central');
+  lbl.setAttribute('font-size','8.5');lbl.setAttribute('fill','#747480');lbl.textContent='DB';dG.appendChild(lbl);
+});
+
+const state={api:false,dbread:false,noauth:false,newsvc:false};
+const rules={
+  dbread:{node:'timeline', target:'case', text:'No cross-service database access — call the owning service via its API.'},
+  noauth:{node:'auth', text:'Authentication required on every non-public endpoint.'},
+  newsvc:{node:null, text:'Every service must be declared in workspace.dsl before it ships.'},
+};
+
+function setNodeState(id, mode){ // mode: 'flag' | 'clear'
+  const r=document.querySelector('#svc-'+id+' rect');
+  if(!r) return;
+  if(mode==='flag'){ r.setAttribute('stroke','#e0654f'); r.setAttribute('stroke-width','2.4'); r.setAttribute('fill','#2a2026'); }
+  else { r.setAttribute('stroke','#3a3a46'); r.setAttribute('stroke-width','1.2'); r.setAttribute('fill','#23232f'); }
+}
+
+function render(){
+  // reset nodes
+  services.forEach(s=>setNodeState(s.id,'clear'));
+  // dynamic edges
+  document.getElementById('e-api').style.display   = state.api?'block':'none';
+  document.getElementById('e-api-l').style.display = state.api?'block':'none';
+  document.getElementById('e-dbread').style.display= state.dbread?'block':'none';
+  document.getElementById('f-dbread').style.display= state.dbread?'block':'none';
+  document.getElementById('n-report').style.display= state.newsvc?'block':'none';
+
+  const viols=[];
+  if(state.dbread){ viols.push(rules.dbread); setNodeState('timeline','flag'); setNodeState('case','flag'); }
+  if(state.noauth){ viols.push(rules.noauth); setNodeState('auth','flag'); }
+  if(state.newsvc){ viols.push(rules.newsvc); }
+
+  const icon=document.getElementById('v-icon');
+  const title=document.getElementById('v-title');
+  const reason=document.getElementById('v-reason');
+  const rulesEl=document.getElementById('v-rules');
+  const verdict=document.querySelector('.verdict');
+  rulesEl.innerHTML='';
+
+  if(viols.length){
+    icon.textContent='!'; icon.style.background='rgba(255,230,0,.16)'; icon.style.color='var(--accent)';
+    verdict.style.borderLeftColor='var(--accent)';
+    title.textContent='Drift surfaced before merge — '+viols.length+' issue'+(viols.length>1?'s':'');
+    reason.textContent='The governor checked the proposed change against the declared model and its policies. These are blocked at review, not shipped:';
+    viols.forEach(v=>{ const d=document.createElement('div'); d.className='v-rule'; d.textContent=v.text; rulesEl.appendChild(d); });
+  } else if(state.api){
+    icon.textContent='✓'; icon.style.background='rgba(67,214,160,.16)'; icon.style.color='var(--ok)';
+    verdict.style.borderLeftColor='var(--ok)';
+    title.textContent='Change accepted — aligned with the model';
+    reason.textContent='Timeline now calls Case through a declared interface. The governor confirms it fits the model and its policies. Nothing to flag.';
+  } else {
+    icon.textContent='✓'; icon.style.background='rgba(67,214,160,.16)'; icon.style.color='var(--ok)';
+    verdict.style.borderLeftColor='var(--ok)';
+    title.textContent='Aligned with the declared model';
+    reason.textContent='No proposed changes. The architecture matches workspace.dsl and its policies — nothing for the governor to flag.';
+  }
+}
+
+document.querySelectorAll('.law-row').forEach(row=>{
+  row.addEventListener('click',()=>{
+    const k=row.dataset.key;
+    state[k]=!state[k];
+    document.getElementById('t-'+k).classList.toggle('on',state[k]);
+    render();
+  });
+});
+render();
+</script>
+</body>
+</html>

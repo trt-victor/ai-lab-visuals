@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="25-maturity">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- AI maturity: six dimensions scored 1–5 → radar, overall level, and the next three moves ----
+const LV = ["Exploring", "Experimenting", "Operationalising", "Scaling", "Governed at scale"];
+const LVD = ["Curiosity and scattered trials.", "Pilots in pockets; little reaches production.", "A few systems in production with named owners.", "A shared platform and a repeatable way to deliver.", "AI is part of how the organisation runs, with evidence by default."];
+const DIM = [
+  ["Strategy & value", C.yellow, ["No stated ambition; AI is a topic, not a plan.", "A list of use cases, chosen by enthusiasm.", "A prioritised portfolio tied to business outcomes.", "Value is measured per initiative and funding follows it.", "AI shapes the strategy itself; the portfolio is managed like any other investment."]],
+  ["Data", C.cyan, ["Data sits in silos; access is by favour.", "Usable data for a few cases, prepared by hand.", "Key domains have owners, quality rules and access routes.", "Data products are reused across cases; rights and lineage are known.", "Data is treated as an asset with service levels and automated quality."]],
+  ["Technology & platform", C.magenta, ["Individuals use public tools.", "Each team picks its own tools and models.", "An approved set of tools and a first shared environment.", "A common platform: models, tooling, evaluation, deployment.", "The platform enforces the rules and is independent of any one vendor."]],
+  ["People & skills", C.blue, ["A handful of enthusiasts.", "Basic literacy training; specialists in one team.", "Role-based training; new roles are defined.", "Teams routinely work with agents; careers reflect the new roles.", "Working with AI is a normal skill, and continuous learning is built in."]],
+  ["Governance & risk", C.green, ["No policy, or a ban.", "A policy document; review case by case.", "A register of AI systems; risk classification; human oversight defined.", "Controls are written as checks and run automatically in delivery.", "Every artefact carries its evidence; conformity is a by-product."]],
+  ["Operating model", C.orange, ["AI is bolted onto existing work by individuals.", "Projects run next to the organisation, not in it.", "Clear ownership between business and IT; some processes redesigned.", "Work is organised in flows with agents and human gates.", "Small teams operate flows; the organisation tunes itself on cost and friction."]],
+];
+const val = store.get("lab.maturity", [2, 2, 3, 2, 1, 2]);
+const sv = svg(stage, 1000, 540), g = s("g", {}, sv), CX = 300, CY = 270, R = 200;
+const pt = (i, v) => { const a = -Math.PI / 2 + (i / 6) * Math.PI * 2, r = (v / 5) * R; return [CX + r * Math.cos(a), CY + r * Math.sin(a)]; };
+const sl = card(side, "Score your organisation"), sliders = DIM.map(([t], i) => slider(sl.body, { label: t, min: 1, max: 5, value: val[i], fmt: (v) => `${v} · ${LV[v - 1]}` }, (v) => { val[i] = v; store.set("lab.maturity", val); draw(i); }));
+const ro = readout(side), mv = card(side, "Your next three moves"), mvB = h("ol", { style: "padding-left:18px;font-size:14px;color:var(--muted);display:flex;flex-direction:column;gap:8px" }, mv.body);
+function draw(focus = 4) {
+  g.innerHTML = "";
+  for (let r = 1; r <= 5; r++) { s("polygon", { points: DIM.map((_, i) => pt(i, r).join(",")).join(" "), fill: "none", stroke: "rgba(255,255,255,.13)" }, g); text(g, CX + 6, CY - (r / 5) * R + 4, r, { size: 10, anchor: "start", fill: "rgba(255,255,255,.4)", weight: 400 }); }
+  DIM.forEach(([t, c], i) => { const [x, y] = pt(i, 5), [lx, ly] = pt(i, 5.9); s("line", { x1: CX, y1: CY, x2: x, y2: y, stroke: "rgba(255,255,255,.2)" }, g); text(g, lx, ly + 4, t, { size: 13.5, weight: 700, fill: c, max: 12 }); });
+  s("polygon", { points: val.map((v, i) => pt(i, v).join(",")).join(" "), fill: "rgba(255,230,0,.2)", stroke: C.yellow, "stroke-width": 3 }, g);
+  val.forEach((v, i) => { const [x, y] = pt(i, v); s("circle", { cx: x, cy: y, r: 7, fill: DIM[i][1], stroke: "#0b0718", "stroke-width": 2 }, g); });
+  // staircase
+  const avg = val.reduce((a, b) => a + b, 0) / 6, mn = Math.min(...val), mx = Math.max(...val), level = Math.max(1, Math.min(5, Math.floor(avg + 0.25))), capped = Math.min(level, mn + 1);
+  LV.forEach((n, i) => { const x = 590 + i * 80, hh = 60 + i * 62, y = 470 - hh, on = i + 1 === capped; s("rect", { x, y, width: 72, height: hh, rx: 10, fill: on ? hexA(C.yellow, 0.35) : i + 1 < capped ? "rgba(255,255,255,.12)" : "rgba(255,255,255,.04)", stroke: on ? C.yellow : "rgba(255,255,255,.2)", "stroke-width": on ? 3 : 1 }, g); text(g, x + 36, y + 28, i + 1, { size: 22, weight: 700, fill: on ? C.yellow : "rgba(255,255,255,.6)" }); text(g, x + 36, 492, n, { size: 10.5, weight: on ? 700 : 400, fill: on ? "#fff" : "rgba(255,255,255,.55)", max: 11 }); });
+  text(g, 790, 40, `Level ${capped}: ${LV[capped - 1]}`, { size: 24, weight: 700, fill: C.yellow }); text(g, 790, 68, LVD[capped - 1], { size: 13.5, fill: "rgba(255,255,255,.75)", weight: 400, max: 48 });
+  if (capped < level) text(g, 790, 112, `Held back by the weakest dimension (${DIM[val.indexOf(mn)][0]}).`, { size: 12.5, fill: C.orange, weight: 700, max: 52 });
+  const [t, c, d] = DIM[focus], v = val[focus];
+  ro.set(`${t} · level ${v}`, d[v - 1], v < 5 ? `<b>One level up looks like:</b> ${d[v]}` : "This is the top of the scale. The work now is keeping it true.");
+  const order = val.map((v, i) => [v, i]).sort((a, b) => a[0] - b[0]).filter(([v]) => v < 5).slice(0, 3);
+  mvB.innerHTML = order.map(([v, i]) => `<li><b style="color:${DIM[i][1]}">${DIM[i][0]}</b> ${v} → ${v + 1}: ${DIM[i][2][v]}</li>`).join("") || "<li>Nothing below level 5. Check the scores with someone outside the programme.</li>";
+  if (mx - mn >= 2) mvB.innerHTML += `<li style="list-style:none;color:${C.orange}">Unbalanced profile: ${DIM[val.indexOf(mx)][0].toLowerCase()} is ${mx - mn} levels ahead of ${DIM[val.indexOf(mn)][0].toLowerCase()}. Capability without the weaker dimension rarely reaches production.</li>`;
+}
+h("p", { class: "hint", style: "margin:6px 4px 0", text: "The overall level cannot be more than one above the weakest dimension. Scores are saved in this browser." }, stage);
+draw();
+
+</script>
+</body>
+</html>

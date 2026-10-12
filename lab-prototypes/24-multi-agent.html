@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="24-multi-agent">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Multi-agent patterns: six ways to combine model calls, each drawn and animated ----
+const PAT = {
+  chain: { t: "Prompt chaining", one: "Break the job into fixed steps. Each call works on the previous call's output, with a check in between.", when: "The task splits cleanly into stages you can name in advance.", ex: "Extract the facts → check them against policy → draft the letter.", foundry: "A flow of cycles in a fixed order.", s: [2, 2, 5], who: "Code decides the path" },
+  route: { t: "Routing", one: "Classify the input first, then send it to the specialist built for that kind of case.", when: "Inputs fall into distinct categories that need different prompts, tools or models.", ex: "Billing question → billing agent. Outage → technical agent. Easy cases → a small cheap model.", foundry: "Sort: inspect, then route.", s: [1, 1, 4], who: "Code or a small model decides" },
+  par: { t: "Parallelisation", one: "Run several calls at once: either different parts of the job (sectioning), or the same job several times to vote.", when: "Sub-tasks are independent, or you want several opinions before trusting an answer.", ex: "Three reviewers check security, performance and style at the same time. Or five runs vote on “is this fraud?”", foundry: "A panel of appraisers.", s: [3, 1, 4], who: "Code decides the split" },
+  orch: { t: "Orchestrator and workers", one: "A lead agent reads the task, decides what sub-tasks are needed, hands them out and combines the results.", when: "You cannot know the sub-tasks in advance: it depends on the input.", ex: "“Update every file affected by this API change.” The orchestrator finds out which, then delegates one each.", foundry: "A flow that spawns child work items.", s: [4, 3, 3], who: "A model decides the split" },
+  eval: { t: "Evaluator and optimiser", one: "One agent produces, another judges against explicit criteria, and the first revises. Repeat until it passes.", when: "There are clear criteria, and a second look measurably improves the result.", ex: "Draft a translation, critique it for tone and accuracy, revise.", foundry: "Forge, Appraise, Refine: the heart of a Foundry cycle.", s: [3, 4, 4], who: "Criteria decide when to stop" },
+  auto: { t: "Autonomous agent", one: "One agent in an open loop with tools: it plans, acts, observes the result and continues until done or stopped.", when: "Open-ended problems where the number of steps cannot be predicted, in an environment you trust it to act in.", ex: "A coding agent given a failing test and a repository.", foundry: "A node with broad capabilities, inside limits.", s: [5, 5, 2], who: "The model decides everything" },
+};
+const bar = h("div", { class: "bar" }, stage);
+const tabs = seg(bar, Object.entries(PAT).map(([k, v]) => [k, v.t]), "chain", show);
+h("button", { class: "btn primary", text: "Run", on: { click: () => run() } }, bar);
+const sv = svg(stage, 1000, 460), g = s("g", {}, sv);
+h("p", { class: "hint", style: "margin:6px 4px 0", text: "“Multi-agent” simply means more than one model call, each with its own instructions and its own context, coordinated either by ordinary code or by another model." }, stage);
+const ro = readout(side), bars = card(side, "Trade-offs"), bB = h("div", {}, bars.body), adv = card(side, "Start simple");
+adv.body.innerHTML = "<p>These are listed from most predictable to most autonomous. Use the <b>simplest pattern that solves the problem</b>: every step up adds cost, latency and ways to fail.</p><p>Most production systems are chains and routers with one evaluator loop, not swarms.</p>";
+let cur = "chain", runId = 0, anim = null;
+const IO = (x, y, t) => node(g, { x, y, w: 90, h: 44, label: t, color: "rgba(255,255,255,.5)", size: 14, rx: 22 });
+const A = (x, y, t, c = C.magenta, w = 150) => node(g, { x, y, w, h: 60, label: t, color: c, size: 15, max: 16 });
+const L = (a, b, o = {}) => link(g, a, b, { color: "rgba(255,255,255,.45)", ...o });
+const send = (p, c = C.yellow, o = {}) => token(g, p, { color: c, ms: 520, r: 8, ...o });
+const DRAW = {
+  chain() { const i = IO(70, 230, "In"), a = A(240, 230, "Extract"), gate = A(420, 230, "Check", C.orange, 110), b = A(590, 230, "Analyse"), c = A(770, 230, "Write"), o = IO(930, 230, "Out"); const e = [L(i, a), L(a, gate), L(gate, b), L(b, c), L(c, o)]; const fail = edge(g, [420, 265], [420, 340], { color: C.red, dash: "5 5" }); text(g, 420, 362, "stop if the check fails", { size: 12, fill: C.red, weight: 500 });
+    anim = async (ok) => { for (const [k, p] of e.entries()) { if (!ok()) return; await send(p); [a, gate, b, c][k]?.active(true); await wait(200); [a, gate, b, c][k]?.active(null); } }; },
+  route() { const i = IO(70, 230, "In"), r = A(260, 230, "Router", C.orange, 130), sp = [A(560, 100, "Billing agent"), A(560, 230, "Technical agent"), A(560, 360, "General (small model)", C.cyan, 170)], o = IO(900, 230, "Out"); const e0 = L(i, r), er = sp.map((x) => L(r, x)), eo = sp.map((x) => L(x, o)); let n = 0;
+    anim = async (ok) => { for (let q = 0; q < 3; q++) { if (!ok()) return; const k = n++ % 3; await send(e0); r.active(true); await wait(250); r.active(null); sp.forEach((x, j) => x.dim(j !== k)); await send(er[k]); sp[k].active(true); await wait(300); sp[k].active(null); await send(eo[k]); sp.forEach((x) => x.dim(false)); } }; },
+  par() { const i = IO(70, 230, "In"), w = [A(470, 100, "Security review"), A(470, 230, "Performance review"), A(470, 360, "Style review")], ag = A(740, 230, "Aggregate", C.orange, 130), o = IO(920, 230, "Out"); const ei = w.map((x) => L(i, x)), eo = w.map((x) => L(x, ag)), ef = L(ag, o);
+    anim = async (ok) => { await Promise.all(ei.map((p) => send(p))); if (!ok()) return; w.forEach((x) => x.active(true)); await wait(500); w.forEach((x) => x.active(null)); await Promise.all(eo.map((p) => send(p, C.green))); if (!ok()) return; ag.active(true); await wait(300); ag.active(null); await send(ef); }; },
+  orch() { const i = IO(70, 230, "In"), or = A(270, 230, "Orchestrator", C.purple, 150), w = [A(560, 80, "Worker"), A(560, 180, "Worker"), A(560, 280, "Worker"), A(560, 380, "Worker")], sy = A(800, 230, "Synthesise", C.orange, 130), o = IO(940, 230, "Out"); const e0 = L(i, or), ew = w.map((x) => L(or, x, { dash: "5 6" })), es = w.map((x) => L(x, sy)), ef = L(sy, o); text(g, 270, 300, "decides at run time how many workers and what each does", { size: 12, fill: "rgba(255,255,255,.6)", weight: 400, max: 30 }); let n = 0;
+    anim = async (ok) => { const k = [4, 2, 3][n++ % 3]; w.forEach((x, j) => x.dim(j >= k)); await send(e0); or.active(true); await wait(400); or.active(null); if (!ok()) return; await Promise.all(ew.slice(0, k).map((p) => send(p, C.purple))); w.slice(0, k).forEach((x) => x.active(true)); await wait(450); w.forEach((x) => x.active(null)); w.forEach((x, j) => x.dim(j >= k)); if (!ok()) return; await Promise.all(es.slice(0, k).map((p) => send(p, C.green))); await send(ef); w.forEach((x) => x.dim(false)); }; },
+  eval() { const i = IO(70, 230, "In"), gen = A(330, 230, "Generator", C.magenta, 160), ev = A(660, 230, "Evaluator", C.orange, 160), o = IO(920, 230, "Out"); const e0 = L(i, gen), f = edge(g, [410, 210], [580, 210], { color: "rgba(255,255,255,.45)", curve: -40 }), bk = edge(g, [580, 252], [410, 252], { color: C.red, curve: -40, dash: "5 6" }), ef = L(ev, o); text(g, 495, 168, "candidate", { size: 12, fill: "rgba(255,255,255,.6)", weight: 400 }); text(g, 495, 312, "feedback: rejected, with reasons", { size: 12, fill: C.red, weight: 500 }); const vt = text(g, 660, 300, "", { size: 14, weight: 700 });
+    anim = async (ok) => { await send(e0); for (let r = 1; r <= 3; r++) { if (!ok()) return; gen.active(true); await wait(300); gen.active(null); await send(f); ev.active(true); await wait(350); ev.active(null); const pass = r === 3; vt.textContent = pass ? `round ${r}: accepted` : `round ${r}: rejected`; vt.setAttribute("fill", pass ? C.green : C.red); if (pass) break; await send(bk, C.red); } await send(ef, C.green); }; },
+  auto() { const hu = IO(90, 230, "Human"), ag = A(380, 230, "Agent", C.yellow, 170), env = A(750, 230, "Environment: tools, files, systems", C.cyan, 230); const e0 = L(hu, ag), act = edge(g, [470, 205], [630, 205], { color: C.green, curve: -45 }), obs = edge(g, [630, 255], [470, 255], { color: C.cyan, curve: -45 }), ask = edge(g, [292, 262], [138, 262], { color: C.orange, curve: -30, dash: "5 6" }); text(g, 550, 160, "action", { size: 12, fill: C.green, weight: 500 }); text(g, 550, 318, "observation", { size: 12, fill: C.cyan, weight: 500 }); text(g, 215, 318, "asks when blocked or at a checkpoint", { size: 12, fill: C.orange, weight: 500, max: 22 }); const ct = text(g, 380, 300, "", { size: 14, weight: 700, fill: C.yellow });
+    anim = async (ok) => { await send(e0); for (let r = 1; r <= 5; r++) { if (!ok()) return; ct.textContent = `step ${r}`; ag.active(true); await wait(220); ag.active(null); await send(act, C.green); env.active(true); await wait(220); env.active(null); await send(obs, C.cyan); if (r === 3) { await send(ask, C.orange); await wait(300); await send(e0); } } ct.textContent = "done: stop condition met"; }; },
+};
+function show(k) {
+  cur = k; runId++; g.innerHTML = ""; DRAW[k](); const p = PAT[k];
+  ro.set(p.who, p.t, `${p.one}<p style="margin-top:10px"><b>Use when:</b> ${p.when}</p><p style="margin-top:6px"><b>Example:</b> ${p.ex}</p><p style="margin-top:6px"><b>In Foundry:</b> ${p.foundry}</p>`);
+  bB.innerHTML = [["Autonomy", 0, C.yellow], ["Cost & latency", 1, C.orange], ["Predictability", 2, C.green]].map(([l, i, c]) => `<div class="field" style="margin-bottom:8px"><div class="row"><span>${l}</span><b>${p.s[i]}/5</b></div><div style="height:6px;border-radius:3px;background:rgba(255,255,255,.14)"><div style="height:6px;border-radius:3px;width:${p.s[i] * 20}%;background:${c}"></div></div></div>`).join("");
+  run();
+}
+async function run() { const my = ++runId; await wait(250); if (my === runId && anim) anim(() => my === runId); }
+show("chain");
+
+</script>
+</body>
+</html>

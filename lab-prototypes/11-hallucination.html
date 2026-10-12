@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="11-hallucination">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Hallucination: (1) the model samples a likely next token; (2) reliability is built from layers around it ----
+const CASES = [
+  { p: "The capital of Australia is", note: "A well-known fact. The right answer dominates, but a plausible wrong one is never at zero.", right: "Canberra", raw: { Canberra: 4.2, Sydney: 2.9, Melbourne: 1.4, Perth: -0.4, "not sure": -1.5 }, grounded: { Canberra: 6.5, Sydney: 0.8, Melbourne: 0.2, Perth: -1, "not sure": -1 } },
+  { p: "The 2023 revenue of Veldkamp Logistics BV was", note: "An obscure fact the model never saw. It has no “I don't know” reflex: it produces a figure that looks like the right kind of answer.", right: "€41.7m", raw: { "€38m": 1.6, "€45m": 1.55, "€52m": 1.4, "€41.7m": 1.2, "€29m": 1.15, "not stated": 0.3 }, grounded: { "€38m": -1, "€45m": -1, "€52m": -1.2, "€41.7m": 5.4, "€29m": -1.3, "not stated": 0.6 } },
+  { p: "The court case that established this rule is", note: "The classic failure: a citation with the right shape, a believable name and year, and no existence.", right: "No such case exists", raw: { "Jansen v. Staat (2014)": 2.0, "De Vries v. ABN (2011)": 1.9, "Smit v. Achmea (2017)": 1.8, "No such case exists": 0.2 }, grounded: { "Jansen v. Staat (2014)": -0.8, "De Vries v. ABN (2011)": -1, "Smit v. Achmea (2017)": -1, "No such case exists": 4.6 } },
+];
+let ci = 1, T = 1, ground = false;
+const bar = h("div", { class: "bar" }, stage);
+const sel = h("select", { class: "btn", style: "max-width:100%", on: { change: () => { ci = +sel.value; draw(); } } }, bar); CASES.forEach((c, i) => h("option", { value: i, text: `“${c.p} …”` }, sel)); sel.value = 1;
+const gTop = toggle(bar, "<b>Ground it</b>: give the model the source document", false, (v) => { ground = v; LAY[0][3] = v; lTog[0].input.checked = v; draw(); });
+const sv = svg(stage, 1000, 350), barsG = s("g", {}, sv), dotsG = s("g", {}, sv);
+const tw = h("div", { style: "max-width:420px;margin:4px 4px 14px" }, stage);
+slider(tw, { label: "Temperature (how adventurous the sampling is)", min: 0.1, max: 2, step: 0.1, value: 1, fmt: (v) => v.toFixed(1) }, (v) => { T = v; draw(); });
+function probs() { const c = CASES[ci], lg = ground ? c.grounded : c.raw, ks = Object.keys(lg), ex = ks.map((k) => Math.exp(lg[k] / T)), sum = ex.reduce((a, b) => a + b, 0); return ks.map((k, i) => [k, ex[i] / sum]); }
+function draw() {
+  const c = CASES[ci], ps = probs(); barsG.innerHTML = ""; dotsG.innerHTML = "";
+  text(barsG, 20, 30, `“${c.p} ___”`, { size: 19, weight: 500, anchor: "start", "font-style": "italic" });
+  text(barsG, 20, 56, "Probability of each next answer", { size: 12, weight: 700, anchor: "start", fill: C.yellow, "letter-spacing": 1.5 });
+  ps.forEach(([k, p], i) => { const y = 76 + i * 38, ok = k === c.right, w = p * 420; text(barsG, 230, y + 19, k, { size: 14.5, weight: ok ? 700 : 500, anchor: "end", fill: ok ? C.green : "#fff" }); s("rect", { x: 244, y, width: Math.max(2, w), height: 26, rx: 7, fill: ok ? C.green : hexA(C.red, 0.75) }, barsG); text(barsG, 252 + w, y + 19, `${(p * 100).toFixed(p < 0.1 ? 1 : 0)}%`, { size: 13, anchor: "start", fill: "rgba(255,255,255,.8)", weight: 500 }); });
+  // 100 samples
+  text(dotsG, 720, 56, "100 answers to the same question", { size: 12, weight: 700, anchor: "start", fill: C.yellow, "letter-spacing": 1.5 });
+  let wrong = 0, cum = 0; const cuts = ps.map(([k, p]) => [(cum += p), k]);
+  for (let i = 0; i < 100; i++) { const r = (i + 0.5) / 100, k = cuts.find(([cc]) => r <= cc)?.[1] ?? cuts[cuts.length - 1][1], ok = k === c.right; if (!ok) wrong++; s("circle", { cx: 730 + (i % 10) * 25, cy: 82 + Math.floor(i / 10) * 23, r: 8, fill: ok ? C.green : C.red, opacity: 0.9 }, dotsG); }
+  text(dotsG, 720, 322, `${wrong} of 100 are wrong, and each one reads just as confident.`, { size: 13, anchor: "start", fill: wrong > 20 ? C.red : wrong > 3 ? C.yellow : C.green, weight: 700, max: 40 });
+  ro.set(ground ? "Grounded" : "From memory alone", ground ? "With the source in view, the answer follows the document" : "The model completes the pattern", ground ? "The same model, the same question, now with the relevant passage in its context. The probability mass moves to what the document says, including “not stated” when it isn't there. <b>Grounding does not make errors impossible. It makes them rare and checkable.</b>" : c.note + "<p style='margin-top:8px'>A language model is trained to produce <b>likely</b> text. Truth and likelihood usually agree, which is why it is useful, and sometimes don't, which is why it must be checked.</p>");
+  layers();
+}
+// reliability layers (swiss cheese)
+h("div", { class: "eyebrow", style: "margin:6px 4px 8px", text: "Reliability is built in layers" }, stage);
+const LAY = [["Grounding", "Retrieve the source and answer only from it", 0.7, false], ["Deterministic checks", "Schema, totals, citations exist, rules pass", 0.5, true], ["Second-model review", "An independent model appraises against explicit criteria", 0.6, false], ["Human at the gate", "A person reviews what is high-impact or uncertain", 0.8, false]];
+const lTog = [];
+const lw = h("div", { style: "display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px" }, stage), lEls = [];
+LAY.forEach((L, i) => { const c = h("div", { class: "glass", style: "padding:12px 14px" }, lw); const tg = toggle(c, `<b>${L[0]}</b>`, i === 0 ? false : L[3], (v) => { L[3] = v; if (i === 0) { ground = v; gTop.input.checked = v; draw(); } else layers(); }); lTog.push(tg); h("p", { class: "hint", style: "margin:6px 0", text: L[1] }, c); const out = h("div", { style: "font-size:13px;font-weight:700" }, c); lEls.push(out); });
+const K = kpis(side, [["base", "Raw error rate"], ["res", "Reaching the user"], ["x", "Improvement"]]);
+const ro = readout(side), cc = card(side, "What to take away");
+cc.body.innerHTML = "<ul><li>Hallucination is not a bug that will be patched out. It is how generation works.</li><li>No single layer is enough. Each one has holes; stacked, the holes rarely line up.</li><li>Cheap deterministic checks go first, expensive human judgement last.</li></ul>";
+function layers() {
+  const ps = probs(), right = CASES[ci].right, base = 1 - (ps.find(([k]) => k === right)?.[1] ?? 0); let e = ground ? base : base;
+  // grounding is already reflected in the distribution when switched on above; the layer toggle mirrors it
+  let cur = base; LAY.forEach((L, i) => { if (i === 0) { lEls[i].textContent = ground ? `→ ${(base * 1000).toFixed(0)} per 1,000 left` : "off"; lEls[i].style.color = ground ? C.green : "var(--dim)"; return; } if (L[3]) cur *= 1 - L[2]; lEls[i].textContent = L[3] ? `→ ${(cur * 1000).toFixed(0)} per 1,000 left` : "off"; lEls[i].style.color = L[3] ? C.green : "var(--dim)"; });
+  const raw = 1 - (() => { const c = CASES[ci], ks = Object.keys(c.raw), ex = ks.map((k) => Math.exp(c.raw[k] / T)), sm = ex.reduce((a, b) => a + b, 0); return ex[ks.indexOf(c.right)] / sm; })();
+  K.base(`${(raw * 100).toFixed(0)}%`, C.red, "model alone"); K.res(`${(cur * 100).toFixed(cur < 0.1 ? 1 : 0)}%`, cur > 0.1 ? C.red : cur > 0.01 ? C.yellow : C.green, "after active layers"); K.x(cur > 0 ? `${(raw / cur).toFixed(0)}×` : "∞", C.green, "fewer wrong answers");
+}
+draw();
+
+</script>
+</body>
+</html>

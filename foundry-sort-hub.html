@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Foundry — Sort routing simulator</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/tabler-icons.min.css">
+  <style>
+    :root {
+      --color-background-primary: #ffffff;
+      --color-background-secondary: #f5f4f0;
+      --color-text-primary: #1a1a18;
+      --color-text-secondary: #5f5e5a;
+      --color-text-tertiary: #888780;
+      --color-border-tertiary: rgba(0,0,0,0.12);
+      --color-border-secondary: rgba(0,0,0,0.22);
+      --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --border-radius-md: 8px;
+      --border-radius-lg: 12px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --color-background-primary: #1c1c1a;
+        --color-background-secondary: #242422;
+        --color-text-primary: #e8e6de;
+        --color-text-secondary: #a8a69e;
+        --color-text-tertiary: #6e6c66;
+        --color-border-tertiary: rgba(255,255,255,0.10);
+        --color-border-secondary: rgba(255,255,255,0.18);
+      }
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--color-background-secondary);
+      color: var(--color-text-primary);
+      padding: 40px 24px 64px;
+      min-height: 100vh;
+    }
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      background: var(--color-background-primary);
+      border-radius: 16px;
+      border: 0.5px solid var(--color-border-tertiary);
+      padding: 32px 32px 40px;
+    }
+    .page-title {
+      font-size: 22px;
+      font-weight: 500;
+      color: var(--color-text-primary);
+      margin-bottom: 4px;
+    }
+    .page-subtitle {
+      font-size: 14px;
+      color: var(--color-text-secondary);
+      margin-bottom: 28px;
+      line-height: 1.6;
+    }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0,0,0,0); border: 0;
+    }
+    .law-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 16px 0;
+    }
+    @media (max-width: 520px) {
+      .law-grid { grid-template-columns: 1fr; }
+    }
+    .law-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--color-background-secondary);
+      border: 0.5px solid var(--color-border-tertiary);
+      border-radius: var(--border-radius-md);
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: border-color .15s;
+      user-select: none;
+    }
+    .law-row:hover { border-color: var(--color-border-secondary); }
+    .law-toggle {
+      width: 32px;
+      height: 18px;
+      border-radius: 9px;
+      border: 0.5px solid var(--color-border-secondary);
+      background: var(--color-background-primary);
+      position: relative;
+      flex-shrink: 0;
+      transition: background .2s, border-color .2s;
+      cursor: pointer;
+    }
+    .law-toggle.on { background: #1D9E75; border-color: #0F6E56; }
+    .law-toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px; left: 2px;
+      width: 13px; height: 13px;
+      border-radius: 50%;
+      background: #fff;
+      transition: transform .2s;
+    }
+    .law-toggle.on::after { transform: translateX(13px); }
+    .law-label {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      line-height: 1.4;
+      flex: 1;
+    }
+    .law-label strong {
+      font-weight: 500;
+      color: var(--color-text-primary);
+      display: block;
+      font-size: 13px;
+    }
+    .section-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--color-text-tertiary);
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      margin: 4px 0 4px;
+    }
+    .verdict-bar {
+      margin: 8px 0 0;
+      border-radius: var(--border-radius-lg);
+      padding: 14px 16px;
+      border: 0.5px solid var(--color-border-tertiary);
+      background: var(--color-background-secondary);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .verdict-icon { font-size: 22px; flex-shrink: 0; }
+    .verdict-title {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--color-text-primary);
+    }
+    .verdict-reason {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      margin-top: 3px;
+      line-height: 1.5;
+    }
+    svg text { font-family: var(--font-sans); }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h2 class="sr-only">Foundry Sort routing simulator — toggle law states to watch Sort decide where to send the artefact</h2>
+  <p class="page-title">Sort — the routing hub</p>
+  <p class="page-subtitle">Sort sits at the centre of the Foundry cycle. Toggle the law states below to simulate how Sort reads them and decides where to dispatch the artefact.</p>
+
+  <svg id="hub-svg" width="100%" viewBox="0 0 680 420" role="img" xmlns="http://www.w3.org/2000/svg" style="margin-bottom:8px">
+    <title>Sort as routing hub</title>
+    <desc>Sort sits at the centre. Four thin dashed spokes connect it to Forge (top-left), Quench (top-right), Appraise (bottom-right), and Human validation (bottom-left). Thicker arrows run between the four outer stages showing the natural cycle flow.</desc>
+    <defs>
+      <marker id="arrowBig" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+      <marker id="arrowSmall" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+
+    <!-- Forge TL: x=40 y=40 w=148 h=64 centre=(114,72) -->
+    <rect x="40" y="40" width="148" height="64" rx="10" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5" id="rect-forge"/>
+    <text x="114" y="64" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#633806">Forge</text>
+    <text x="114" y="84" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#854F0B">LLM generates draft</text>
+
+    <!-- Quench TR: x=492 y=40 w=148 h=64 centre=(566,72) -->
+    <rect x="492" y="40" width="148" height="64" rx="10" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5" id="rect-quench"/>
+    <text x="566" y="64" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#042C53">Quench</text>
+    <text x="566" y="84" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#185FA5">Deterministic tests</text>
+
+    <!-- Appraise BR: x=492 y=316 w=148 h=64 centre=(566,348) -->
+    <rect x="492" y="316" width="148" height="64" rx="10" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5" id="rect-appraise"/>
+    <text x="566" y="340" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#26215C">Appraise</text>
+    <text x="566" y="360" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#3C3489">Law-based judgement</text>
+
+    <!-- Human BL: x=40 y=316 w=148 h=64 centre=(114,348) -->
+    <rect x="40" y="316" width="148" height="64" rx="10" fill="#FCEBEB" stroke="#A32D2D" stroke-width="0.5" id="rect-human"/>
+    <text x="114" y="340" text-anchor="middle" dominant-baseline="central" font-size="14" font-weight="500" fill="#501313">Human</text>
+    <text x="114" y="360" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#A32D2D">Deadlock resolution</text>
+
+    <!-- Sort centre: x=270 y=168 w=140 h=84 centre=(340,210) -->
+    <rect x="270" y="168" width="140" height="84" rx="12" fill="#E1F5EE" stroke="#0F6E56" stroke-width="1.5" id="rect-sort"/>
+    <text x="340" y="198" text-anchor="middle" dominant-baseline="central" font-size="15" font-weight="500" fill="#04342C">Sort</text>
+    <text x="340" y="218" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#0F6E56">reads laws</text>
+    <text x="340" y="232" text-anchor="middle" dominant-baseline="central" font-size="11" fill="#0F6E56">routes artefact</text>
+
+    <!-- Large outer arrows (clockwise between the four stages) -->
+    <line x1="190" y1="62" x2="490" y2="62" stroke="#888780" stroke-width="2.5" marker-end="url(#arrowBig)" opacity="0.32"/>
+    <line x1="576" y1="108" x2="576" y2="314" stroke="#888780" stroke-width="2.5" marker-end="url(#arrowBig)" opacity="0.32"/>
+    <line x1="490" y1="358" x2="190" y2="358" stroke="#888780" stroke-width="2.5" marker-end="url(#arrowBig)" opacity="0.32"/>
+    <line x1="104" y1="314" x2="104" y2="108" stroke="#888780" stroke-width="2.5" marker-end="url(#arrowBig)" opacity="0.32"/>
+
+    <!-- Corner flow labels -->
+    <text x="340" y="50" text-anchor="middle" font-size="11" fill="#888780">after draft → run tests</text>
+    <text x="645" y="210" text-anchor="middle" font-size="11" fill="#888780" transform="rotate(90,645,210)">tests pass → evaluate</text>
+    <text x="340" y="397" text-anchor="middle" font-size="11" fill="#888780">deadlock → escalate</text>
+    <text x="22" y="210" text-anchor="middle" font-size="11" fill="#888780" transform="rotate(-90,22,210)">human clears → redraft</text>
+
+    <!-- Thin dashed Sort spokes -->
+    <line id="spoke-forge"    x1="291" y1="176" x2="184" y2="106" stroke="#0F6E56" stroke-width="1"   stroke-dasharray="5 3" marker-end="url(#arrowSmall)" opacity="0.35"/>
+    <line id="spoke-quench"   x1="389" y1="176" x2="496" y2="106" stroke="#0F6E56" stroke-width="1"   stroke-dasharray="5 3" marker-end="url(#arrowSmall)" opacity="0.35"/>
+    <line id="spoke-appraise" x1="389" y1="244" x2="496" y2="314" stroke="#0F6E56" stroke-width="1"   stroke-dasharray="5 3" marker-end="url(#arrowSmall)" opacity="0.35"/>
+    <line id="spoke-human"    x1="291" y1="244" x2="184" y2="314" stroke="#0F6E56" stroke-width="1"   stroke-dasharray="5 3" marker-end="url(#arrowSmall)" opacity="0.35"/>
+  </svg>
+
+  <p class="section-label">Law states — toggle to simulate</p>
+  <div class="law-grid">
+    <div class="law-row" onclick="toggle('draft')">
+      <div class="law-toggle" id="t-draft"></div>
+      <div class="law-label"><strong>Draft exists</strong>An artefact has been generated by Forge</div>
+    </div>
+    <div class="law-row" onclick="toggle('quench')">
+      <div class="law-toggle" id="t-quench"></div>
+      <div class="law-label"><strong>Quench passed</strong>All deterministic CLI tests exited 0</div>
+    </div>
+    <div class="law-row" onclick="toggle('laws')">
+      <div class="law-toggle" id="t-laws"></div>
+      <div class="law-label"><strong>Laws resolved</strong>All #law feedback actioned or wont-fix approved</div>
+    </div>
+    <div class="law-row" onclick="toggle('deadlock')">
+      <div class="law-toggle" id="t-deadlock"></div>
+      <div class="law-label"><strong>Deadlock / high-stakes flag</strong>Iteration limit hit, or #high-stakes law open</div>
+    </div>
+  </div>
+
+  <div class="verdict-bar">
+    <i class="ti ti-flame verdict-icon" id="verdict-icon" aria-hidden="true" style="color:#854F0B"></i>
+    <div>
+      <div class="verdict-title" id="verdict-title">Route: Forge</div>
+      <div class="verdict-reason" id="verdict-reason">No draft exists yet — Sort dispatches to Forge to generate the first candidate.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const state = { draft: false, quench: false, laws: false, deadlock: false };
+
+  const verdicts = {
+    forge:        { icon: 'ti-flame',         color: '#854F0B', title: 'Route: Forge',             reason: 'No draft exists yet — Sort dispatches to Forge to generate the first candidate.' },
+    forge_rework: { icon: 'ti-refresh',       color: '#854F0B', title: 'Route: Forge (rework)',    reason: 'Laws evaluated — open feedback items returned. Sort sends the artefact back to Forge for the next iteration.' },
+    quench:       { icon: 'ti-test-pipe',     color: '#185FA5', title: 'Route: Quench',            reason: 'Draft exists but deterministic tests have not run yet. Sort sends to Quench before any law-based judgement can happen.' },
+    appraise:     { icon: 'ti-users',         color: '#534AB7', title: 'Route: Appraise',          reason: 'Quench passed. Sort dispatches to Appraise — agents evaluate the artefact against the defined laws and outcome contract.' },
+    human:        { icon: 'ti-user-check',    color: '#A32D2D', title: 'Route: Human',             reason: 'Deadlock detected or a #high-stakes law is open. Sort escalates to the human-appraise gate — #human tags carry absolute priority.' },
+    done:         { icon: 'ti-circle-check',  color: '#0F6E56', title: 'Done — artefact promoted', reason: 'All laws resolved, Quench passed, no deadlock. Sort advances the artefact to the decision-maker.' },
+  };
+
+  const spokeIds = { forge: 'spoke-forge', quench: 'spoke-quench', appraise: 'spoke-appraise', human: 'spoke-human' };
+  const rectIds  = { forge: 'rect-forge',  quench: 'rect-quench',  appraise: 'rect-appraise',  human: 'rect-human'  };
+
+  function decide() {
+    const { draft, quench, laws, deadlock } = state;
+    if (deadlock) return 'human';
+    if (!draft)   return 'forge';
+    if (!quench)  return 'quench';
+    if (!laws)    return 'appraise';
+    return 'done';
+  }
+
+  function activeNodeFor(route) {
+    if (route === 'forge' || route === 'forge_rework') return 'forge';
+    if (route === 'done') return null;
+    return route;
+  }
+
+  function render() {
+    const route = decide();
+    const v = verdicts[route];
+    const activeNode = activeNodeFor(route);
+
+    document.getElementById('verdict-title').textContent  = v.title;
+    document.getElementById('verdict-reason').textContent = v.reason;
+    const icon = document.getElementById('verdict-icon');
+    icon.className   = 'ti ' + v.icon + ' verdict-icon';
+    icon.style.color = v.color;
+
+    Object.entries(spokeIds).forEach(([stage, sid]) => {
+      const el = document.getElementById(sid);
+      const active = stage === activeNode;
+      el.setAttribute('stroke',           active ? v.color : '#0F6E56');
+      el.setAttribute('stroke-width',     active ? '2.5'   : '1');
+      el.setAttribute('opacity',          active ? '1'     : '0.25');
+      el.setAttribute('stroke-dasharray', active ? '0'     : '5 3');
+    });
+
+    Object.entries(rectIds).forEach(([stage, rid]) => {
+      document.getElementById(rid).setAttribute('stroke-width', stage === activeNode ? '2.5' : '0.5');
+    });
+
+    document.getElementById('rect-sort').setAttribute('stroke-width', route === 'done' ? '2.5' : '1.5');
+  }
+
+  function toggle(key) {
+    state[key] = !state[key];
+    document.getElementById('t-' + key).classList.toggle('on', state[key]);
+    render();
+  }
+
+  render();
+</script>
+</body>
+</html>

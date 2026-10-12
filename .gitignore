@@ -1,0 +1,5 @@
+.DS_Store
+.claude/
+node_modules/
+# separate repository: github.com/trt-victor/haiku_builder
+foundry-haiku/

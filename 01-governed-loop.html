@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Governed Loop — the SDLC as a checked cycle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,opsz,wght@0,6..12,300;0,6..12,400;0,6..12,600;0,6..12,700;0,6..12,800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#1a1a24; --surface:#23232f; --raised:#2e2e38;
+    --accent:#ffe600; --text:#ffffff; --muted:#c4c4cd; --dim:#747480;
+    --line:rgba(255,255,255,0.10); --line-2:rgba(255,255,255,0.20);
+    --radius:10px; --radius-lg:14px;
+    --font:'Nunito Sans','Segoe UI',system-ui,-apple-system,sans-serif;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);
+       padding:40px 24px 64px;min-height:100vh;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:780px;margin:0 auto}
+  .eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;
+           color:var(--accent);margin-bottom:10px}
+  h1{font-size:27px;font-weight:800;letter-spacing:-.01em;line-height:1.1;margin-bottom:10px}
+  h1 .y{color:var(--accent)}
+  .sub{font-size:14px;color:var(--muted);line-height:1.6;max-width:62ch;margin-bottom:26px}
+  .stage-svg{width:100%;display:block}
+  svg text{font-family:var(--font)}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 4px}
+  button{font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;
+          border-radius:var(--radius);padding:9px 16px;border:1px solid var(--line-2);
+          background:var(--raised);color:var(--text);transition:border-color .15s,background .15s,transform .05s}
+  button:hover{border-color:var(--accent)}
+  button:active{transform:translateY(1px)}
+  button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  button.primary{background:var(--accent);color:#1a1a24;border-color:var(--accent);font-weight:800}
+  button.primary:hover{background:#fff05a}
+  button[disabled]{opacity:.38;cursor:not-allowed;border-color:var(--line)}
+  .readout{margin-top:18px;background:var(--surface);border:1px solid var(--line);
+           border-left:4px solid var(--accent);border-radius:var(--radius-lg);
+           padding:16px 18px;display:flex;gap:14px;align-items:flex-start}
+  .readout .dot{width:11px;height:11px;border-radius:50%;background:var(--accent);
+                margin-top:5px;flex-shrink:0;box-shadow:0 0 0 4px rgba(255,230,0,.14)}
+  .ro-kicker{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+  .ro-title{font-size:15px;font-weight:700;margin-bottom:5px}
+  .ro-body{font-size:13px;color:var(--muted);line-height:1.55}
+  .ro-body b{color:var(--text);font-weight:600}
+  .gate-note{display:inline-block;margin-top:9px;font-size:11px;font-weight:700;
+             letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:16px;font-size:11.5px;color:var(--dim)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:18px;height:0;border-top:2px solid var(--accent);display:inline-block}
+  .legend .gate{width:10px;height:10px;border-radius:3px;background:var(--accent);border-top:0}
+  .foot{margin-top:22px;font-size:11px;color:var(--dim);line-height:1.6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">Governed delivery · 01</p>
+  <h1>The loop is the <span class="y">unit of work</span></h1>
+  <p class="sub">Every change rides the same governed cycle. The artefact moves stage to stage on its own — but it cannot pass a <strong style="color:var(--accent);font-weight:700">human gate</strong> without a decision. Human judgment is concentrated at the critical gates, not spread across every keystroke.</p>
+
+  <svg class="stage-svg" viewBox="0 0 680 500" role="img" aria-label="The six SDLC stages arranged as a loop with two human gates">
+    <defs>
+      <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur stdDeviation="4" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <marker id="ring-arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+        <path d="M2 2L7 5L2 8" fill="none" stroke="#3a3a46" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+
+    <!-- loop track -->
+    <circle cx="340" cy="250" r="185" fill="none" stroke="#2e2e38" stroke-width="2"/>
+    <!-- direction arrows on the ring -->
+    <g id="ring-arrows"></g>
+
+    <!-- nodes injected by JS -->
+    <g id="nodes"></g>
+
+    <!-- moving artefact -->
+    <g id="artefact" filter="url(#glow)">
+      <circle r="10" fill="#ffe600"/>
+      <text x="0" y="-17" text-anchor="middle" font-size="10" font-weight="700" fill="#ffe600">artefact</text>
+    </g>
+
+    <!-- centre summary -->
+    <text x="340" y="240" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="1.5" fill="#747480">PETITION 050</text>
+    <text id="c-stage" x="340" y="262" text-anchor="middle" font-size="13" font-weight="800" fill="#ffffff">Petition</text>
+  </svg>
+
+  <div class="controls">
+    <button id="btn-step">Step</button>
+    <button id="btn-play" class="primary">Play</button>
+    <button id="btn-approve" disabled>Approve &amp; continue</button>
+    <button id="btn-reset">Reset</button>
+  </div>
+
+  <div class="readout">
+    <span class="dot" id="ro-dot"></span>
+    <div>
+      <div class="ro-kicker" id="ro-kicker">Stage 1 of 6</div>
+      <div class="ro-title" id="ro-title">Petition</div>
+      <div class="ro-body" id="ro-body"><b>Output:</b> Business intent &nbsp;·&nbsp; <b>Why:</b> bound the scope.</div>
+      <span class="gate-note" id="ro-gate" style="display:none"></span>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><i></i> artefact advances automatically</span>
+    <span><span class="gate"></span> human gate — decision required to proceed</span>
+  </div>
+
+  <p class="foot">Human role across the loop: gate intent, gate accountability, gate merge readiness. The cycle closes on doc-sync, where drift is actively controlled before the next petition opens.</p>
+</div>
+
+<script>
+const stages = [
+  {name:'Petition', out:'Business intent', why:'bound the scope', hue:'#ffe600',
+   gate:{kicker:'Human gate · intent', text:'Is this the right scope and business intent to pursue?'}},
+  {name:'Outcome contract + Gherkin', out:'Observable behaviour', why:'remove ambiguity early', hue:'#5aa9e6'},
+  {name:'Architecture + policies', out:'Governed design', why:'keep change platform-aligned', hue:'#a99cf2'},
+  {name:'Specs + tests', out:'Executable expectations', why:'drive implementation', hue:'#43d6a0'},
+  {name:'Implementation + review', out:'Code with evidence', why:'enforce quality', hue:'#e8a13a',
+   gate:{kicker:'Human gate · accountability + merge', text:'Approve the evidence before this merges.'}},
+  {name:'Doc sync + status', out:'Current operating picture', why:'reduce drift afterwards', hue:'#c4c4cd'},
+];
+
+const cx=340, cy=250, R=185;
+const angles=[-90,-30,30,90,150,210];
+const rad=d=>d*Math.PI/180;
+const pt=a=>[cx+R*Math.cos(rad(a)), cy+R*Math.sin(rad(a))];
+
+// short two-line labels for nodes
+const shortLabel=[['Petition'],['Outcome','+ Gherkin'],['Architecture','+ policies'],
+  ['Specs','+ tests'],['Implementation','+ review'],['Doc sync','+ status']];
+
+const svgNS='http://www.w3.org/2000/svg';
+const nodesG=document.getElementById('nodes');
+const W=150,H=60;
+stages.forEach((s,i)=>{
+  const [x,y]=pt(angles[i]);
+  const g=document.createElementNS(svgNS,'g'); g.setAttribute('id','node-'+i);
+  const r=document.createElementNS(svgNS,'rect');
+  r.setAttribute('x',x-W/2); r.setAttribute('y',y-H/2);
+  r.setAttribute('width',W); r.setAttribute('height',H); r.setAttribute('rx',10);
+  r.setAttribute('fill','#23232f'); r.setAttribute('stroke','#33333f'); r.setAttribute('stroke-width','1');
+  g.appendChild(r);
+  const dot=document.createElementNS(svgNS,'circle');
+  dot.setAttribute('cx',x-W/2+15); dot.setAttribute('cy',y-H/2+15); dot.setAttribute('r',4);
+  dot.setAttribute('fill',s.hue); g.appendChild(dot);
+  shortLabel[i].forEach((ln,k)=>{
+    const t=document.createElementNS(svgNS,'text');
+    t.setAttribute('x',x); t.setAttribute('y',y - (shortLabel[i].length>1? 4 : 0) + k*14);
+    t.setAttribute('text-anchor','middle'); t.setAttribute('dominant-baseline','central');
+    t.setAttribute('font-size','12'); t.setAttribute('font-weight','700'); t.setAttribute('fill','#e8e8ee');
+    t.textContent=ln; g.appendChild(t);
+  });
+  if(s.gate){
+    const badge=document.createElementNS(svgNS,'g');
+    const bx=x+W/2-12, by=y-H/2-2;
+    const br=document.createElementNS(svgNS,'rect');
+    br.setAttribute('x',bx-18);br.setAttribute('y',by-9);br.setAttribute('width',32);br.setAttribute('height',18);
+    br.setAttribute('rx',5);br.setAttribute('fill','#ffe600');
+    badge.appendChild(br);
+    const bt=document.createElementNS(svgNS,'text');
+    bt.setAttribute('x',bx-2);bt.setAttribute('y',by);bt.setAttribute('text-anchor','middle');
+    bt.setAttribute('dominant-baseline','central');bt.setAttribute('font-size','9');
+    bt.setAttribute('font-weight','800');bt.setAttribute('fill','#1a1a24');bt.textContent='HUMAN';
+    badge.appendChild(bt); g.appendChild(badge);
+  }
+  nodesG.appendChild(g);
+});
+
+// ring direction arrows (between nodes)
+const ringArrows=document.getElementById('ring-arrows');
+for(let i=0;i<6;i++){
+  const mid=angles[i]+30;
+  const [ax,ay]=[cx+R*Math.cos(rad(mid)),cy+R*Math.sin(rad(mid))];
+  const tang=mid+90;
+  const dx=Math.cos(rad(tang))*6, dy=Math.sin(rad(tang))*6;
+  const ln=document.createElementNS(svgNS,'line');
+  ln.setAttribute('x1',ax-dx);ln.setAttribute('y1',ay-dy);
+  ln.setAttribute('x2',ax+dx);ln.setAttribute('y2',ay+dy);
+  ln.setAttribute('stroke','#2e2e38');ln.setAttribute('stroke-width','2');
+  ln.setAttribute('marker-end','url(#ring-arrow)');
+  ringArrows.appendChild(ln);
+}
+
+const artefact=document.getElementById('artefact');
+const cStage=document.getElementById('c-stage');
+let step=0, animating=false, playing=false, awaitingGate=false, timer=null;
+
+function setArtefactAngle(a){
+  const [x,y]=pt(a);
+  artefact.setAttribute('transform',`translate(${x},${y})`);
+}
+setArtefactAngle(angles[0]);
+
+function highlightNode(idx){
+  stages.forEach((s,i)=>{
+    const rct=document.querySelector('#node-'+i+' rect');
+    const on=i===idx;
+    rct.setAttribute('stroke', on ? s.hue : '#33333f');
+    rct.setAttribute('stroke-width', on ? '2.5' : '1');
+    rct.setAttribute('fill', on ? '#2a2a36' : '#23232f');
+  });
+}
+
+function renderReadout(){
+  const s=stages[step];
+  document.getElementById('ro-kicker').textContent='Stage '+(step+1)+' of 6';
+  document.getElementById('ro-title').textContent=s.name;
+  document.getElementById('ro-body').innerHTML='<b>Output:</b> '+s.out+' &nbsp;·&nbsp; <b>Why:</b> '+s.why+'.';
+  document.getElementById('ro-dot').style.background=s.hue;
+  document.querySelector('.readout').style.borderLeftColor=s.hue;
+  cStage.textContent=s.name.split(' +')[0];
+  cStage.setAttribute('fill', s.hue==='#c4c4cd'?'#ffffff':s.hue);
+  const g=document.getElementById('ro-gate');
+  if(awaitingGate && s.gate){
+    g.style.display='inline-block';
+    g.textContent='▲ '+s.gate.kicker+' — '+s.gate.text;
+  } else { g.style.display='none'; }
+  highlightNode(step);
+}
+
+function animateTo(nextStep, done){
+  animating=true;
+  const fromA=-90+60*step;
+  const toA=-90+60*nextStep;
+  const dur=620, t0=performance.now();
+  function frame(now){
+    let p=Math.min(1,(now-t0)/dur);
+    const e=p<.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
+    setArtefactAngle(fromA+(toA-fromA)*e);
+    if(p<1){requestAnimationFrame(frame);}
+    else{animating=false; step=((nextStep%6)+6)%6; done&&done();}
+  }
+  requestAnimationFrame(frame);
+}
+
+function arriveAtStep(){
+  renderReadout();
+  const s=stages[step];
+  if(s.gate){
+    awaitingGate=true;
+    playing=false;
+    document.getElementById('btn-approve').disabled=false;
+    document.getElementById('btn-play').textContent='Play';
+    renderReadout();
+  }
+}
+
+function advance(){
+  if(animating||awaitingGate) return;
+  animateTo(step+1, arriveAtStep);
+}
+
+document.getElementById('btn-step').onclick=()=>{ stopPlay(); advance(); };
+
+function stopPlay(){ playing=false; clearInterval(timer); document.getElementById('btn-play').textContent='Play'; }
+function startPlay(){
+  if(awaitingGate) return;
+  playing=true; document.getElementById('btn-play').textContent='Pause';
+  const tick=()=>{ if(!playing){clearInterval(timer);return;} advance(); };
+  advance(); timer=setInterval(tick,1050);
+}
+document.getElementById('btn-play').onclick=()=>{ playing?stopPlay():startPlay(); };
+
+document.getElementById('btn-approve').onclick=()=>{
+  awaitingGate=false;
+  document.getElementById('btn-approve').disabled=true;
+  renderReadout();
+  advance();
+};
+
+document.getElementById('btn-reset').onclick=()=>{
+  stopPlay(); clearInterval(timer); animating=false; awaitingGate=false;
+  step=0; document.getElementById('btn-approve').disabled=true;
+  setArtefactAngle(angles[0]); renderReadout();
+};
+
+renderReadout();
+</script>
+</body>
+</html>

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="16-operating-model-builder">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- Operating model builder: stages → steps → detail. Semantic zoom, editable, saved in the browser. ----
+const ACT = { human: ["Human", C.blue, 480], agent: ["Agent", C.magenta, 6], auto: ["Automated gate", C.green, 1], hgate: ["Human decision", C.yellow, 120] }; // minutes of elapsed work
+const ART = { doc: ["Document", "drifts from reality"], data: ["Computable artefact", "versioned, checked, attested"] };
+const st = (name, actor, art = "doc") => ({ name, actor, art });
+const PRESETS = {
+  "Software delivery · today": [["Idea", [st("Business case", "human"), st("Prioritisation meeting", "hgate")]], ["Specify", [st("Write requirements", "human"), st("Architecture document", "human"), st("Design review board", "hgate")]], ["Build", [st("Write code", "human"), st("Peer review", "human"), st("Update documentation", "human")]], ["Verify", [st("Manual test plan", "human"), st("Test execution", "human"), st("Security review", "hgate"), st("Risk sign-off", "hgate")]], ["Release", [st("Change advisory board", "hgate"), st("Deployment", "human")]], ["Operate", [st("Monitor", "human"), st("Incident handling", "human")]]],
+  "Software delivery · governed": [["Idea", [st("Petition drafted", "agent", "data"), st("Business owner approves intent", "hgate", "data")]], ["Specify", [st("Spec forged", "agent", "data"), st("Spec laws checked", "auto", "data"), st("Architecture model updated", "agent", "data"), st("Architect decides trade-offs", "hgate", "data")]], ["Build", [st("Code forged", "agent", "data"), st("Tests and static checks", "auto", "data"), st("Appraisal against laws", "agent", "data")]], ["Verify", [st("Security laws attested", "auto", "data"), st("Risk laws attested", "auto", "data"), st("Risk decides exceptions", "hgate", "data")]], ["Release", [st("Exit contract verified", "auto", "data"), st("Deploy", "auto", "data")]], ["Operate", [st("Drift detection", "auto", "data"), st("Incident triage", "agent", "data"), st("Engineer handles novel cases", "human", "data")]]],
+  "Claims handling · today": [["Intake", [st("Read the claim", "human"), st("Key into system", "human")]], ["Assess", [st("Check policy cover", "human"), st("Request missing documents", "human"), st("Fraud indicators", "human")]], ["Decide", [st("Calculate payout", "human"), st("Second pair of eyes", "hgate")]], ["Pay", [st("Payment run", "human"), st("Letter to customer", "human")]]],
+  "Claims handling · reimagined": [["Intake", [st("Extract the claim", "agent", "data"), st("Completeness check", "auto", "data")]], ["Assess", [st("Match against policy", "agent", "data"), st("Fraud score", "auto", "data"), st("Handler reviews flagged cases", "hgate", "data")]], ["Decide", [st("Payout proposed", "agent", "data"), st("Limit and rule checks", "auto", "data"), st("Handler decides above threshold", "hgate", "data")]], ["Pay", [st("Payment", "auto", "data"), st("Letter drafted and sent", "agent", "data")]]],
+  "Blank": [["Stage 1", [st("First step", "human")]]],
+};
+const fromPreset = (k) => ({ name: k, stages: PRESETS[k].map(([name, steps]) => ({ name, steps: steps.map((x) => ({ ...x })) })) });
+let M = store.get("lab.opmodel", null) || fromPreset("Software delivery · today"), selS = 0, selT = null, pz;
+const bar = h("div", { class: "bar" }, stage);
+const pre = h("select", { class: "btn", on: { change: () => { M = fromPreset(pre.value); selS = 0; selT = null; render(true); } } }, bar); Object.keys(PRESETS).forEach((k) => h("option", { value: k, text: k }, pre)); pre.value = PRESETS[M.name] ? M.name : "Blank";
+const depth = seg(bar, [["1", "Value chain"], ["2", "Steps"], ["3", "Detail"]], "1", (v) => zoomTo(+v));
+h("button", { class: "btn", text: "Copy as JSON", on: { click: (e) => { navigator.clipboard?.writeText(JSON.stringify(M, null, 2)).catch(() => {}); e.target.textContent = "Copied"; setTimeout(() => (e.target.textContent = "Copy as JSON"), 1200); } } }, bar);
+const sv = svg(stage, 1000, 600), world = s("g", {}, sv);
+h("p", { class: "hint", style: "margin:6px 4px 0", text: "Scroll or pinch to zoom: stages become steps, steps show their detail. Tap a stage or a step to edit it on the right. Your model is saved in this browser." }, stage);
+const CW = 250, SH = 66, GAP = 12, TOP = 110;
+function render(refit) {
+  store.set("lab.opmodel", M); world.innerHTML = "";
+  const maxSteps = Math.max(...M.stages.map((x) => x.steps.length), 1), HH = TOP + maxSteps * (SH + GAP) + 30;
+  M.stages.forEach((S, si) => {
+    const x = si * CW, g = s("g", {}, world), sel = si === selS && selT == null;
+    s("rect", { x: x + 8, y: 0, width: CW - 16, height: HH, rx: 26, fill: sel ? "rgba(255,230,0,.07)" : "rgba(255,255,255,.035)", stroke: sel ? C.yellow : "rgba(255,255,255,.2)", "stroke-width": sel ? 3 : 1.5, style: "cursor:pointer", on: { click: () => { selS = si; selT = null; render(); } } }, g);
+    text(g, x + CW / 2, 40, S.name, { size: 22, weight: 700, max: 16 });
+    // actor mix bar
+    let bx = x + 24; const bw = CW - 48; for (const k in ACT) { const n = S.steps.filter((t) => t.actor === k).length; if (!n) continue; const w = (n / S.steps.length) * bw; s("rect", { x: bx, y: 62, width: Math.max(2, w - 2), height: 10, rx: 5, fill: ACT[k][1] }, g); bx += w; }
+    if (si < M.stages.length - 1) edge(world, [x + CW - 6, 67], [x + CW + 6, 67], { color: "rgba(255,255,255,.5)", width: 2 });
+    // level 1 summary (visible when zoomed out)
+    const l1 = s("g", { class: "l1" }, g); text(l1, x + CW / 2, TOP + 70, String(S.steps.length), { size: 80, weight: 700, fill: "rgba(255,255,255,.9)" }); text(l1, x + CW / 2, TOP + 108, S.steps.length === 1 ? "step" : "steps", { size: 22, fill: "rgba(255,255,255,.6)", weight: 400 });
+    const hum = S.steps.filter((t) => t.actor === "human").length, gates = S.steps.filter((t) => t.actor === "hgate").length; text(l1, x + CW / 2, TOP + 160, `${hum} by hand · ${gates} human decision${gates === 1 ? "" : "s"}`, { size: 17, fill: "rgba(255,255,255,.75)", weight: 500, max: 18 });
+    const l2 = s("g", { class: "l2" }, g);
+    S.steps.forEach((T, ti) => {
+      const y = TOP + ti * (SH + GAP) + SH / 2, [an, ac] = ACT[T.actor], on = si === selS && ti === selT;
+      const n = node(l2, { x: x + CW / 2, y, w: CW - 44, h: SH, label: T.name, size: 14, max: 24, color: ac, rx: T.actor === "auto" || T.actor === "hgate" ? 33 : 14, fill: T.art === "data" ? "rgba(20,12,45,.92)" : "rgba(60,50,40,.55)", on: (e) => { e.stopPropagation(); selS = si; selT = ti; render(); } });
+      if (on) n.active(true, C.yellow);
+      const l3 = s("g", { class: "l3" }, l2); text(l3, x + 30, y + SH / 2 - 5, `${an} · ${ART[T.art][0].toLowerCase()}`, { size: 7.5, anchor: "start", fill: ac, weight: 700 });
+      if (ti) { const prev = S.steps[ti - 1], hand = prev.actor === "human" && T.actor === "human"; s("line", { x1: x + CW / 2, y1: y - SH / 2 - GAP + 1, x2: x + CW / 2, y2: y - SH / 2 - 1, stroke: hand ? C.red : "rgba(255,255,255,.4)", "stroke-width": hand ? 3 : 1.5 }, l2); }
+    });
+  });
+  level(pz ? pz.k : 0.6); metrics(); editor();
+  if (refit) fitAll();
+}
+const level = (k) => { const L = k < 0.8 ? 1 : k < 1.9 ? 2 : 3; world.querySelectorAll(".l1").forEach((e) => (e.style.display = L === 1 ? "" : "none")); world.querySelectorAll(".l2").forEach((e) => (e.style.display = L === 1 ? "none" : "")); world.querySelectorAll(".l3").forEach((e) => (e.style.display = L === 3 ? "" : "none")); depth.set(String(L), false); };
+pz = panzoom(sv, world, { min: 0.3, max: 5, onZoom: level }); zoomButtons(stage, pz);
+const dims = () => [M.stages.length * CW, TOP + Math.max(...M.stages.map((x) => x.steps.length), 1) * (SH + GAP) + 30];
+const fitAll = () => { const [w, hh] = dims(); pz.fit(0, 0, w, hh, 30); };
+function zoomTo(L) { const [w, hh] = dims(); if (L === 1) return pz.fit(0, 0, Math.max(w, 1400), hh, 30); const x = selS * CW; L === 2 ? pz.fit(x - CW * 0.9, 0, CW * 2.8, hh, 20) : pz.fit(x, TOP - 20, CW, (SH + GAP) * 3.2, 10); }
+
+const K = kpis(side, [["hand", "Human handoffs"], ["hg", "Human decisions"], ["ag", "Gates automated"], ["by", "Steps by agents"], ["time", "Elapsed time"], ["doc", "Drifting documents"]]);
+const ed = card(side, "Edit"), edB = ed.body, lg = card(side, "Legend");
+lg.body.innerHTML = Object.values(ACT).map(([n, c]) => `<span class="chip" style="--c:${c};margin:0 6px 6px 0"><i></i>${n}</span>`).join("") + "<p style='margin-top:8px'>Dark boxes are <b>computable artefacts</b>; brown boxes are <b>documents</b>. A red connector is a handoff from one person to the next.</p>";
+function metrics() {
+  const all = M.stages.flatMap((x) => x.steps); let hand = 0, mins = 0;
+  M.stages.forEach((S) => S.steps.forEach((T, i) => { mins += ACT[T.actor][2]; if (i && S.steps[i - 1].actor === "human" && T.actor === "human") { hand++; mins += 240; } })); hand += M.stages.slice(1).filter((S, i) => S.steps[0]?.actor === "human" && M.stages[i].steps.at(-1)?.actor !== "auto").length;
+  const hg = all.filter((t) => t.actor === "hgate").length, au = all.filter((t) => t.actor === "auto").length, ag = all.filter((t) => t.actor === "agent").length, docs = all.filter((t) => t.art === "doc").length, days = mins / 480;
+  K.hand(hand, hand > 4 ? C.red : hand > 1 ? C.yellow : C.green); K.hg(hg, null, "where judgement sits"); K.ag(au, au ? C.green : null); K.by(all.length ? `${Math.round((ag / all.length) * 100)}%` : "0%"); K.time(days >= 1 ? `${days.toFixed(1)} d` : `${Math.round(mins / 60)} h`, days > 6 ? C.red : days > 2 ? C.yellow : C.green, "working time, illustrative"); K.doc(docs, docs > 3 ? C.red : docs ? C.yellow : C.green);
+}
+function editor() {
+  edB.innerHTML = ""; const S = M.stages[selS]; if (!S) return;
+  const inp = (val, fn) => h("input", { value: val, style: "font:inherit;font-size:15px;color:#fff;background:rgba(0,0,0,.3);border:1px solid var(--line);border-radius:10px;padding:9px 12px;width:100%;margin-bottom:10px", on: { change: (e) => { fn(e.target.value); render(); } } }, edB);
+  const row = () => h("div", { style: "display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px" }, edB), b = (p, t, fn) => h("button", { class: "btn sm", text: t, on: { click: () => { fn(); render(); } } }, p);
+  if (selT == null) {
+    h("p", { class: "hint", style: "margin-bottom:6px", text: `Stage ${selS + 1} of ${M.stages.length}` }, edB); inp(S.name, (v) => (S.name = v)); const r = row();
+    b(r, "+ Step", () => { S.steps.push(st("New step", "human")); selT = S.steps.length - 1; }); b(r, "+ Stage after", () => { M.stages.splice(selS + 1, 0, { name: "New stage", steps: [st("New step", "human")] }); selS++; });
+    b(r, "← Move", () => { if (selS > 0) { M.stages.splice(selS - 1, 0, M.stages.splice(selS, 1)[0]); selS--; } }); b(r, "Move →", () => { if (selS < M.stages.length - 1) { M.stages.splice(selS + 1, 0, M.stages.splice(selS, 1)[0]); selS++; } });
+    b(r, "Delete stage", () => { if (M.stages.length > 1) { M.stages.splice(selS, 1); selS = Math.max(0, selS - 1); } });
+    h("p", { class: "hint", text: "Tap a step inside the stage to change who does it." }, edB);
+  } else {
+    const T = S.steps[selT]; h("p", { class: "hint", style: "margin-bottom:6px", text: `${S.name} · step ${selT + 1} of ${S.steps.length}` }, edB); inp(T.name, (v) => (T.name = v));
+    h("p", { class: "hint", style: "margin-bottom:4px", text: "Who does it" }, edB); const a = row(); seg(a, Object.entries(ACT).map(([k, v]) => [k, v[0]]), T.actor, (v) => { T.actor = v; render(); });
+    h("p", { class: "hint", style: "margin-bottom:4px", text: "What it produces" }, edB); const c = row(); seg(c, Object.entries(ART).map(([k, v]) => [k, v[0]]), T.art, (v) => { T.art = v; render(); });
+    const r = row(); b(r, "↑", () => { if (selT > 0) { S.steps.splice(selT - 1, 0, S.steps.splice(selT, 1)[0]); selT--; } }); b(r, "↓", () => { if (selT < S.steps.length - 1) { S.steps.splice(selT + 1, 0, S.steps.splice(selT, 1)[0]); selT++; } });
+    b(r, "+ Step after", () => { S.steps.splice(selT + 1, 0, st("New step", "human")); selT++; }); b(r, "Delete", () => { S.steps.splice(selT, 1); selT = S.steps.length ? Math.min(selT, S.steps.length - 1) : null; });
+  }
+}
+render(true);
+
+</script>
+</body>
+</html>

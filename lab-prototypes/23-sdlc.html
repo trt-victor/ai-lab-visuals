@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EY.ai Lab prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/lab.css">
+<script src="assets/lab.js"></script>
+</head>
+<body data-page="23-sdlc">
+<main class="page "><section id="stage" class="stage glass"></section><aside id="side" class="side"></aside></main>
+<script>
+const { C, s, h, $, clamp, lerp, ease, wait, tween, hexA, svg, arrow, text, node, edge, port, link, token, panzoom, zoomButtons, seg, slider, toggle, card, readout, kpis, legend, store, PAGES } = Lab;
+const stage = $("stage"), side = $("side");
+// ---- SDLC agentic platform: choose build / integrate / buy per stage; see the evidence chain and the platform spine respond ----
+const OPT = { build: ["Build", C.yellow, "A governed cycle on your own platform"], integ: ["Integrate", C.cyan, "Keep the existing tool; connect it with an adapter"], buy: ["Buy", C.magenta, "A vendor's agent or suite feature"] };
+const ST = [
+  { t: "Intent", art: "Petition", laws: "Has an owner · measurable outcome · in scope", gate: "Business owner approves", tools: { integ: "Jira / Azure Boards", buy: "Suite planning assistant" }, ev: { integ: 0.7, buy: 0.2 } },
+  { t: "Requirements", art: "Specification", laws: "Testable · traceable to intent · no contradictions", gate: "Analyst resolves ambiguity", tools: { integ: "Confluence + spec linter", buy: "Requirements copilot" }, ev: { integ: 0.5, buy: 0.2 } },
+  { t: "Design", art: "Architecture model", laws: "Conforms to reference architecture · dependencies declared", gate: "Architect decides trade-offs", tools: { integ: "Existing modelling tool", buy: "Design assistant" }, ev: { integ: 0.5, buy: 0.1 } },
+  { t: "Build", art: "Code", laws: "Compiles · has tests · no secrets · style rules", gate: "Engineer reviews the diff", tools: { integ: "GitHub + coding agent", buy: "Vendor coding agent" }, ev: { integ: 0.8, buy: 0.5 } },
+  { t: "Test", art: "Test evidence", laws: "Coverage threshold · all requirements have a test", gate: "QA signs off risk-based", tools: { integ: "CI pipeline + SonarQube", buy: "Testing agent" }, ev: { integ: 0.9, buy: 0.4 } },
+  { t: "Release", art: "Release record", laws: "Exit contract satisfied · change window · rollback plan", gate: "Risk decides exceptions", tools: { integ: "ServiceNow change", buy: "Release orchestration suite" }, ev: { integ: 0.7, buy: 0.4 } },
+  { t: "Operate", art: "Runtime state", laws: "No drift from the model · service levels met", gate: "Engineer handles novel incidents", tools: { integ: "Observability stack", buy: "AIOps product" }, ev: { integ: 0.7, buy: 0.5 } },
+];
+const PRE = { "Integrate-first": "integ,integ,integ,integ,integ,integ,integ", "Build the core": "integ,build,build,build,build,integ,integ", "Buy where possible": "buy,buy,buy,buy,buy,integ,buy", "All-in build": "build,build,build,build,build,build,build" };
+const SPINE = [["Library of laws", "One place where every rule lives, versioned"], ["Attestation store", "Signed record of every check on every artefact version"], ["Exit contracts", "What an artefact must carry to move on"], ["Traceability graph", "Intent → spec → code → test → release, as links"], ["Identity & permissions", "Which agent or person may do what"], ["Cost & friction ledger", "What each stage and each rule costs"]];
+let cfg = PRE["Build the core"].split(","), cur = 3;
+const bar = h("div", { class: "bar" }, stage); seg(bar, Object.keys(PRE), "Build the core", (k) => { cfg = PRE[k].split(","); draw(); });
+const sv = svg(stage, 1000, 580), g = s("g", {}, sv), X = (i) => 85 + i * 138;
+function draw() {
+  g.innerHTML = ""; const evid = ST.map((S, i) => (cfg[i] === "build" ? 1 : S.ev[cfg[i]]));
+  text(g, 20, 30, "LIFECYCLE: tap a stage, tap again to change the choice", { size: 12, weight: 700, fill: C.yellow, anchor: "start", "letter-spacing": 1.5 });
+  ST.forEach((S, i) => { const [on, c] = OPT[cfg[i]], sel = i === cur;
+    if (i < 6) { const strong = Math.min(evid[i], evid[i + 1]); s("line", { x1: X(i) + 58, y1: 110, x2: X(i + 1) - 58, y2: 110, stroke: strong > 0.65 ? C.green : strong > 0.35 ? C.orange : C.red, "stroke-width": strong > 0.65 ? 5 : 3, "stroke-dasharray": strong > 0.65 ? null : "6 6" }, g); }
+    const n = node(g, { x: X(i), y: 110, w: 116, h: 92, label: S.t, sub: on, color: c, size: 15, subSize: 12, on: () => { if (cur === i) cfg[i] = { build: "integ", integ: "buy", buy: "build" }[cfg[i]]; cur = i; draw(); } }); if (sel) n.active(true, c);
+    text(g, X(i), 182, S.art, { size: 11.5, fill: "rgba(255,255,255,.7)", weight: 500 }); text(g, X(i), 198, cfg[i] === "build" ? "governed cycle" : S.tools[cfg[i]], { size: 9.5, fill: "rgba(255,255,255,.45)", weight: 400, max: 20 });
+    // evidence meter
+    s("rect", { x: X(i) - 50, y: 222, width: 100, height: 8, rx: 4, fill: "rgba(255,255,255,.12)" }, g); s("rect", { x: X(i) - 50, y: 222, width: 100 * evid[i], height: 8, rx: 4, fill: evid[i] > 0.65 ? C.green : evid[i] > 0.35 ? C.orange : C.red }, g); });
+  text(g, 500, 252, "evidence each stage produces by itself", { size: 11, fill: "rgba(255,255,255,.5)", weight: 400 });
+  // platform spine
+  text(g, 20, 300, "PLATFORM SPINE: shared by every stage, whatever the choice above", { size: 12, weight: 700, fill: C.yellow, anchor: "start", "letter-spacing": 1.5 });
+  const nb = cfg.filter((c) => c === "build").length, adapters = cfg.filter((c) => c !== "build").length;
+  SPINE.forEach(([t, d], j) => { const y = 318 + j * 38; s("rect", { x: 20, y, width: 960, height: 30, rx: 10, fill: "rgba(255,230,0,.07)", stroke: "rgba(255,230,0,.45)" }, g); text(g, 34, y + 20, t, { size: 13.5, weight: 700, anchor: "start" }); text(g, 250, y + 20, d, { size: 12, anchor: "start", fill: "rgba(255,255,255,.6)", weight: 400 });
+    ST.forEach((S, i) => { const native = cfg[i] === "build", c = native ? C.green : cfg[i] === "integ" ? C.cyan : C.magenta; s("rect", { x: 640 + i * 47, y: y + 7, width: 40, height: 16, rx: 8, fill: native ? hexA(C.green, 0.8) : "none", stroke: c, "stroke-width": 1.5, "stroke-dasharray": native ? null : "3 3" }, g); }); });
+  ST.forEach((S, i) => text(g, 660 + i * 47, 312, S.t.slice(0, 3), { size: 9.5, fill: "rgba(255,255,255,.55)", weight: 700 }));
+  text(g, 980, 566, "per stage: solid = provided natively · dashed = needs an adapter", { size: 11, fill: "rgba(255,255,255,.6)", weight: 400, anchor: "end" });
+  const chain = Math.min(...evid), avg = evid.reduce((a, b) => a + b, 0) / 7, lock = cfg.filter((c) => c === "buy").length;
+  K.gov(`${Math.round(avg * 100)}%`, avg > 0.75 ? C.green : avg > 0.5 ? C.yellow : C.red); K.weak(ST[evid.indexOf(chain)].t, chain > 0.65 ? C.green : C.red, chain > 0.65 ? "chain holds" : "the chain breaks here"); K.ad(adapters, adapters > 5 ? C.orange : null, "to build and maintain"); K.lock(lock > 3 ? "High" : lock > 1 ? "Medium" : "Low", lock > 3 ? C.red : lock > 1 ? C.yellow : C.green); K.ttv(nb > 5 ? "Slowest" : nb > 2 ? "Medium" : "Fastest", null, "time to first value");
+  const S = ST[cur], [on, c, od] = OPT[cfg[cur]];
+  ro.set(`${S.t} · ${on}`, `Artefact: ${S.art}`, `${od}${cfg[cur] !== "build" ? `: <b>${S.tools[cfg[cur]]}</b>` : ""}.<p style="margin-top:8px"><b>Laws checked here:</b> ${S.laws}</p><p style="margin-top:6px"><b>Human decision:</b> ${S.gate}</p><p style="margin-top:6px"><b>Evidence:</b> ${cfg[cur] === "build" ? "attested natively, for every law, on every version." : cfg[cur] === "integ" ? "the tool has the data; an adapter must turn it into attestations." : "largely inside the vendor's product. Getting comparable evidence out is the open question."}</p>`);
+}
+const K = kpis(side, [["gov", "Evidence coverage"], ["weak", "Weakest link"], ["ad", "Adapters"], ["lock", "Vendor lock-in"], ["ttv", "Speed"]]);
+const ro = readout(side), pos = card(side, "The position this illustrates");
+pos.body.innerHTML = "<p>The choice is rarely all-or-nothing. Keep the tools that already work, and <b>build the spine</b>: the laws, the attestations and the exit contracts that make the stages one governed flow.</p><p>What you cannot buy is the thing that connects the stages.</p>";
+const rel = card(side, "Related visuals"); rel.body.innerHTML = `<ul><li><a href="../01-governed-loop.html">The governed loop</a></li><li><a href="../02-traceability-web.html">Traceability web</a></li><li><a href="../04-drift-detector.html">Drift detector</a></li><li><a href="../foundry-haiku/public/desktop.html">Foundry haiku loop (needs its server)</a></li></ul>`;
+draw();
+
+</script>
+</body>
+</html>
